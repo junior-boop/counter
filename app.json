@@ -36,7 +36,18 @@
       ],
       "expo-sharing",
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Inter_24pt-Regular.ttf",
+            "./assets/fonts/Inter_24pt-Medium.ttf",
+            "./assets/fonts/Inter_24pt-SemiBold.ttf",
+            "./assets/fonts/Inter_24pt-Bold.ttf"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

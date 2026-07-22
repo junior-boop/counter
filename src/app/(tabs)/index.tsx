@@ -1,7 +1,8 @@
+import { Text } from "@/components/text";
 import Titre from "@/components/titre";
 import { getDate, getDay, getMonth } from "date-fns";
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import theme from "../../constants/constant-style";
 

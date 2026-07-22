@@ -1,6 +1,8 @@
+import { Text } from "@/components/text";
 import Titre from "@/components/titre";
+import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
@@ -14,11 +16,11 @@ export default function SettingsScreen() {
                 <Titre titre="Activités" />
                 <View style={{ paddingHorizontal: theme.screenPadding }}>
                     <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
-                        <TouchableOpacity style={styles.button} onPress={() => { }}>
+                        <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "bar" } })}>
                             <Text style={{ fontSize: theme.size_two }}>Snack-Bar | Bars</Text>
                             <ChevronRight color="black" size={20} strokeWidth={1} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.button} onPress={() => { }}>
+                        <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "restaurant" } })}>
                             <Text style={{ fontSize: theme.size_two }}>Café | Restaurants</Text>
 
                             <ChevronRight color="black" size={20} strokeWidth={1} />

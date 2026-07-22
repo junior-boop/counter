@@ -1,4 +1,5 @@
-import { Text, View } from "react-native";
+import { Text } from "@/components/text";
+import { View } from "react-native";
 
 export default function CaisseScreen() {
     return (

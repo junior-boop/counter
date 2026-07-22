@@ -1,6 +1,6 @@
+import { Text } from '@/components/text';
 import { Tabs } from 'expo-router';
 import { House, Layers, Settings, Wallet } from "lucide-react-native";
-import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const fontSizeLabel = 13
