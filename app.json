@@ -8,7 +8,8 @@
     "scheme": "vmscounter",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -37,6 +38,7 @@
       "expo-sharing",
       "expo-sqlite",
       "expo-secure-store",
+      "expo-notifications",
       [
         "expo-font",
         {

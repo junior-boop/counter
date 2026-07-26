@@ -1,6 +1,8 @@
+import { useAlert } from "@/components/alert/alert.context";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { Produit, TypeActivite } from "@/Database/db";
+import { formaterMontant } from "@/lib/currency";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react-native";
 import { useState } from "react";
@@ -16,6 +18,7 @@ const TITRES: Record<TypeActivite, string> = {
 export default function ActiviteScreen() {
     const { type } = useLocalSearchParams<{ type: TypeActivite }>();
     const { categoriesQuery, produitsQuery, addCategorie, addProduit, updateProduit, deleteCategorie, deleteProduit } = useDatabase();
+    const { showError, confirm } = useAlert();
 
     const [expanded, setExpanded] = useState<string | null>(null);
     const [nouvelleCategorie, setNouvelleCategorie] = useState("");
@@ -28,14 +31,20 @@ export default function ActiviteScreen() {
     const categories = categoriesQuery?.findBy("type", type) ?? [];
 
     const handleAddCategorie = async () => {
-        if (!nouvelleCategorie.trim()) return;
+        if (!nouvelleCategorie.trim()) {
+            showError("Le nom de la catégorie est requis.");
+            return;
+        }
         await addCategorie({ nom: nouvelleCategorie.trim(), type });
         setNouvelleCategorie("");
     };
 
     const handleAddProduit = async (categorie_id: string) => {
         const prix = parseFloat(nouveauProduit.prix);
-        if (!nouveauProduit.nom.trim() || Number.isNaN(prix)) return;
+        if (!nouveauProduit.nom.trim() || Number.isNaN(prix)) {
+            showError("Le nom et le prix du produit sont requis.");
+            return;
+        }
         const quantite_par_lot = type === "bar" && nouveauProduit.quantite_par_lot.trim()
             ? parseInt(nouveauProduit.quantite_par_lot, 10)
             : undefined;
@@ -66,7 +75,10 @@ export default function ActiviteScreen() {
     const handleUpdateProduit = async () => {
         if (!selectedProduit) return;
         const prix = parseFloat(editForm.prix);
-        if (!editForm.nom.trim() || Number.isNaN(prix)) return;
+        if (!editForm.nom.trim() || Number.isNaN(prix)) {
+            showError("Le nom et le prix du produit sont requis.");
+            return;
+        }
         const quantite_par_lot = type === "bar" && editForm.quantite_par_lot.trim()
             ? parseInt(editForm.quantite_par_lot, 10)
             : undefined;
@@ -76,6 +88,8 @@ export default function ActiviteScreen() {
 
     const handleDeleteProduit = async () => {
         if (!selectedProduit) return;
+        const ok = await confirm(`Supprimer "${selectedProduit.nom}" ?`, { confirmLabel: "Supprimer" });
+        if (!ok) return;
         await deleteProduit(selectedProduit.id);
         closeSheet();
     };
@@ -84,7 +98,7 @@ export default function ActiviteScreen() {
         <SafeAreaView style={{ flex: 1 }}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
                 <View>
-                    <View style={{ height: 72, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
+                    <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
                         <TouchableOpacity onPress={() => router.back()}>
                             <ArrowLeft color="black" size={22} strokeWidth={1.5} />
                         </TouchableOpacity>
@@ -97,11 +111,11 @@ export default function ActiviteScreen() {
                                 onChangeText={setNouvelleCategorie}
                                 placeholder="Ajouter une catégorie"
                                 placeholderTextColor={"#aaaaaa"}
-                                style={{ flex: 1, backgroundColor: "transparent", borderRadius: theme.internal_radius_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, height: 32 }}
+                                style={{ flex: 1, backgroundColor: "transparent", borderRadius: theme.internal_radius_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, height: theme.touchTarget }}
                             />
                             <TouchableOpacity
                                 onPress={handleAddCategorie}
-                                style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", width: 32, height: 32 }}
+                                style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", width: theme.touchTarget, height: theme.touchTarget }}
                             >
                                 <Plus color="white" size={20} strokeWidth={1.5} />
                             </TouchableOpacity>
@@ -111,7 +125,7 @@ export default function ActiviteScreen() {
 
                 <ScrollView style={{ flex: 1 }}>
                     {/* <Titre titre="Catégories" /> */}
-                    <View style={{ paddingHorizontal: theme.screenPadding, gap: 8, paddingVertical: theme.internal_padding }}>
+                    <View style={{ paddingHorizontal: 12, gap: 8, paddingVertical: theme.internal_padding }}>
 
 
                         {categories.map((categorie) => {
@@ -127,7 +141,10 @@ export default function ActiviteScreen() {
                                     >
                                         <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
                                         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding }}>
-                                            <TouchableOpacity onPress={() => deleteCategorie(categorie.id)}>
+                                            <TouchableOpacity onPress={async () => {
+                                                const ok = await confirm(`Supprimer la catégorie "${categorie.nom}" et ses produits ?`, { confirmLabel: "Supprimer" });
+                                                if (ok) await deleteCategorie(categorie.id);
+                                            }}>
                                                 <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
                                             </TouchableOpacity>
                                             {isExpanded ? <ChevronDown color="black" size={20} strokeWidth={1} /> : <ChevronRight color="black" size={20} strokeWidth={1} />}
@@ -140,12 +157,12 @@ export default function ActiviteScreen() {
                                                 <TouchableOpacity
                                                     key={produit.id}
                                                     onPress={() => openSheet(produit)}
-                                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 32 }}
+                                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: theme.touchTarget }}
                                                 >
                                                     <Text style={{ fontSize: theme.size_two }}>
                                                         {produit.nom}{produit.quantite_par_lot ? ` (lot de ${produit.quantite_par_lot})` : ""}
                                                     </Text>
-                                                    <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{produit.prix} XAF</Text>
+                                                    <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{formaterMontant(produit.prix)}</Text>
                                                 </TouchableOpacity>
                                             ))}
 
@@ -178,7 +195,7 @@ export default function ActiviteScreen() {
                                                     )}
                                                     <TouchableOpacity
                                                         onPress={() => handleAddProduit(categorie.id)}
-                                                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", height: 32, width: 32 }}
+                                                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", height: theme.touchTarget, width: theme.touchTarget }}
                                                     >
                                                         <Plus color="white" size={20} strokeWidth={1.5} />
                                                     </TouchableOpacity>
@@ -195,9 +212,9 @@ export default function ActiviteScreen() {
 
             <Modal visible={selectedProduit !== null} transparent animationType="slide" onRequestClose={closeSheet}>
                 <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
-                    <View style={{ flex: 1, position: 'relative' }}>
-                        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={closeSheet} />
-                        <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                    <View style={{ flex: 1, position: 'relative', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={closeSheet} />
+                        <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth }}>
                             {!isEditing ? (
                                 <>
                                     <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedProduit?.nom}</Text>

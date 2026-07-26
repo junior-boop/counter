@@ -14,7 +14,7 @@ export async function getByCategorie(categorie_id: string): Promise<Produit[]> {
 }
 
 export async function created(data: Omit<Produit, "id">): Promise<Produit> {
-  return await ProduitModel.create({ id: generateUUID(), ...data });
+  return await ProduitModel.create({ id: generateUUID(), stock_actuel: 0, ...data });
 }
 
 export async function updated(data: Produit): Promise<Produit | null> {

@@ -1,5 +1,6 @@
 import { Text } from "@/components/text";
 import Titre from "@/components/titre";
+import { formaterMontant } from "@/lib/currency";
 import { getDate, getDay, getMonth } from "date-fns";
 import { useEffect, useState } from "react";
 import { ScrollView, View } from 'react-native';
@@ -45,11 +46,11 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: "space-between" }}>
               <View>
                 <Text style={{ fontSize: theme.size_one, fontWeight: 'bold' }}>Nom du client</Text>
-                <Text style={{ fontSize: theme.size_two }}>Reste : 2500 XAF</Text>
+                <Text style={{ fontSize: theme.size_two }}>Reste : {formaterMontant(2500)}</Text>
               </View>
               <View>
                 <Text style={{ fontSize: theme.size_one, textAlign: "right", fontWeight: 'bold' }}>Total Facture</Text>
-                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>12500 XAF</Text>
+                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>{formaterMontant(12500)}</Text>
               </View>
             </View>
           </View>
@@ -58,11 +59,11 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: "space-between" }}>
               <View>
                 <Text style={{ fontSize: theme.size_one, fontWeight: 'bold' }}>Nom du client</Text>
-                <Text style={{ fontSize: theme.size_two }}>Reste : 2500 XAF</Text>
+                <Text style={{ fontSize: theme.size_two }}>Reste : {formaterMontant(2500)}</Text>
               </View>
               <View>
                 <Text style={{ fontSize: theme.size_one, textAlign: "right", fontWeight: 'bold' }}>Total Facture</Text>
-                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>12500 XAF</Text>
+                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>{formaterMontant(12500)}</Text>
               </View>
             </View>
           </View>

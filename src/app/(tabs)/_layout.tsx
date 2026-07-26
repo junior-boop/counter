@@ -2,8 +2,9 @@ import { Text } from '@/components/text';
 import { Tabs } from 'expo-router';
 import { House, Layers, Settings, Wallet } from "lucide-react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import theme from "../../constants/constant-style";
 
-const fontSizeLabel = 13
+const fontSizeLabel = theme.size_one
 
 export default function TabsBar() {
     const frame = useSafeAreaInsets()
@@ -16,7 +17,7 @@ export default function TabsBar() {
                 headerShown: false,
                 tabBarShowLabel: true,
                 tabBarStyle: {
-                    height: frame.bottom >= 20 ? 55 : 78,
+                    height: (frame.bottom >= 20 ? 55 : 78) + (theme.isTablet ? 12 : 0),
                     borderTopColor: "#eee",
                     borderTopWidth: 1,
                     elevation: 0, // Pour Android
