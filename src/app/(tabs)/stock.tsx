@@ -3,8 +3,9 @@ import { useAlert } from "@/components/alert/alert.context";
 import { StockTrendChart, StockTrendPoint } from "@/components/StockTrendChart";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
-import { CategoriePerte, Produit, TypeActivite } from "@/Database/db";
-import { formaterDateCourte, formaterDateRelative } from "@/lib/date";
+import { CategoriePerte, MouvementStock, Produit, TypeActivite, TypeMouvementStock } from "@/Database/db";
+import { formaterDateCourte, formaterDateRelative, jourLocal } from "@/lib/date";
+import { Temporal } from "@js-temporal/polyfill";
 import { router } from "expo-router";
 import { ArrowLeft, ChevronRight, PackagePlus, X } from "lucide-react-native";
 import { useState } from "react";
@@ -24,12 +25,13 @@ const CATEGORIES_PERTE: { value: CategoriePerte; label: string }[] = [
     { value: "inexplique", label: "Écart inexpliqué" },
 ];
 
+const JOURS_AFFICHES = 7;
+
 type ModalMode = "reappro" | "perte" | "seuil";
-type ComptageMode = "ouverture" | "fermeture" | null;
 type ListMode = "reappro" | "perte" | null;
 
 export default function StockScreen() {
-    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, ouvrirSessionStock, fermerSessionStock, ajouterMouvementStock, modifierSeuilAlerteProduit } = useDatabase();
+    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, ajouterMouvementStock, modifierSeuilAlerteProduit } = useDatabase();
     const { session } = useAuth();
     const { showError } = useAlert();
     const insets = useSafeAreaInsets();
@@ -48,51 +50,81 @@ export default function StockScreen() {
     const [lots, setLots] = useState("");
     const [unitesSupp, setUnitesSupp] = useState("");
 
-    const [comptageMode, setComptageMode] = useState<ComptageMode>(null);
-    const [comptageValeurs, setComptageValeurs] = useState<Record<string, string>>({});
-    const [comptageLots, setComptageLots] = useState<Record<string, string>>({});
-    const [comptageUnites, setComptageUnites] = useState<Record<string, string>>({});
-
     const activite: TypeActivite | null = etablissement?.type === "les_deux" ? activiteChoisie : (etablissement?.type ?? null);
 
     const categories = (activite ? categoriesQuery?.findBy("type", activite) : []) ?? [];
-    const produitIdsActivite = new Set(categories.flatMap((c) => (produitsQuery?.findBy("categorie_id", c.id) ?? []).map((p) => p.id)));
-    const produitsComptage = categories
-        .flatMap((c) => produitsQuery?.findBy("categorie_id", c.id) ?? [])
-        .slice()
-        .sort((a, b) => a.nom.localeCompare(b.nom));
-
     const sessionsActivite = (activite ? sessionsStockQuery?.findBy("type_activite", activite) : []) ?? [];
     const sessionOuverte = sessionsActivite
         .filter((s) => s.statut === "ouverte")
         .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
+
+    const sommerQuantites = (mouvements: MouvementStock[], type: TypeMouvementStock) =>
+        mouvements.filter((m) => m.type === type).reduce((somme, m) => somme + m.quantite, 0);
 
     const historique = sessionsActivite
         .slice()
         .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))
         .map((s) => {
             const mouvements = mouvementsStockQuery?.findBy("session_id", s.id) ?? [];
-            const nombreProduitsOuverture = mouvements.filter((m) => m.type === "inventaire_ouverture").length;
-            const totalOuverture = mouvements.filter((m) => m.type === "inventaire_ouverture").reduce((sum, m) => sum + m.quantite, 0);
-            const totalReappro = mouvements.filter((m) => m.type === "reapprovisionnement").reduce((sum, m) => sum + m.quantite, 0);
-            const totalFermeture = mouvements.filter((m) => m.type === "inventaire_fermeture").reduce((sum, m) => sum + m.quantite, 0);
-            return { session: s, nombreProduitsOuverture, totalOuverture, totalReappro, totalFermeture };
+            return {
+                session: s,
+                nombreProduitsOuverture: mouvements.filter((m) => m.type === "inventaire_ouverture").length,
+                ouverture: sommerQuantites(mouvements, "inventaire_ouverture"),
+                reappro: sommerQuantites(mouvements, "reapprovisionnement"),
+                pertes: sommerQuantites(mouvements, "perte"),
+                restant: sommerQuantites(mouvements, "inventaire_fermeture"),
+                cloture: s.statut === "fermee",
+            };
         });
 
     const tendanceParJour: StockTrendPoint[] = (() => {
-        const parJour = new Map<string, { ouverture: number; reappro: number; fermeture: number }>();
-        for (const { session: s, totalOuverture, totalReappro, totalFermeture } of historique) {
-            const jour = s.date_ouverture.slice(0, 10);
-            const entree = parJour.get(jour) ?? { ouverture: 0, reappro: 0, fermeture: 0 };
-            entree.ouverture += totalOuverture;
-            entree.reappro += totalReappro;
-            entree.fermeture += totalFermeture;
-            parJour.set(jour, entree);
+        if (historique.length === 0) return [];
+
+        type Cumul = { ouverture: number; reappro: number; pertes: number; restant: number; cloture: boolean };
+        const parJour = new Map<string, Cumul>();
+
+        for (const entree of historique) {
+            const jour = jourLocal(entree.session.date_ouverture);
+            const cumul = parJour.get(jour) ?? { ouverture: 0, reappro: 0, pertes: 0, restant: 0, cloture: false };
+            cumul.ouverture += entree.ouverture;
+            cumul.reappro += entree.reappro;
+            cumul.pertes += entree.pertes;
+            cumul.restant += entree.restant;
+            cumul.cloture = cumul.cloture || entree.cloture;
+            parJour.set(jour, cumul);
         }
-        return Array.from(parJour.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .slice(-14)
-            .map(([jour, valeurs]) => ({ jour: formaterDateCourte(jour), ...valeurs }));
+
+        // Fenêtre calendaire fixe : les jours sans inventaire comptent autant que les autres,
+        // une journée non comptée est justement un angle mort pour la détection d'écart.
+        const aujourdhui = Temporal.Now.plainDateISO();
+        const debut = aujourdhui.subtract({ days: JOURS_AFFICHES - 1 });
+
+        const points: StockTrendPoint[] = [];
+        for (let curseur = debut; Temporal.PlainDate.compare(curseur, aujourdhui) <= 0; curseur = curseur.add({ days: 1 })) {
+            const jour = curseur.toString();
+            const label = formaterDateCourte(new Date(curseur.year, curseur.month - 1, curseur.day));
+            const cumul = parJour.get(jour);
+
+            if (!cumul) {
+                points.push({ jour, label, aSession: false, cloture: false, ouverture: 0, reappro: 0, pertes: 0, restant: 0, disponible: 0, sorti: 0 });
+                continue;
+            }
+
+            const disponible = cumul.ouverture + cumul.reappro;
+            points.push({
+                jour,
+                label,
+                aSession: true,
+                cloture: cumul.cloture,
+                ouverture: cumul.ouverture,
+                reappro: cumul.reappro,
+                pertes: cumul.pertes,
+                restant: cumul.restant,
+                disponible,
+                sorti: cumul.cloture ? Math.max(0, disponible - cumul.restant) : 0,
+            });
+        }
+        return points;
     })();
 
     const closeSheet = () => {
@@ -196,68 +228,9 @@ export default function StockScreen() {
         }
     };
 
-    const openComptageModal = (mode: "ouverture" | "fermeture") => {
-        const initialValeurs: Record<string, string> = {};
-        const initialLots: Record<string, string> = {};
-        const initialUnites: Record<string, string> = {};
-        for (const produit of produitsComptage) {
-            const stock = produit.stock_actuel ?? 0;
-            if (produit.quantite_par_lot) {
-                initialLots[produit.id] = String(Math.floor(stock / produit.quantite_par_lot));
-                initialUnites[produit.id] = String(stock % produit.quantite_par_lot);
-            } else {
-                initialValeurs[produit.id] = String(stock);
-            }
-        }
-        setComptageValeurs(initialValeurs);
-        setComptageLots(initialLots);
-        setComptageUnites(initialUnites);
-        setComptageMode(mode);
-    };
-
-    const closeComptageModal = () => {
-        setComptageMode(null);
-        setComptageValeurs({});
-        setComptageLots({});
-        setComptageUnites({});
-    };
-
-    const calculerQuantiteComptage = (produit: Produit): number => {
-        if (produit.quantite_par_lot) {
-            const lotsVal = comptageLots[produit.id]?.trim() ? parseFloat(comptageLots[produit.id]) : 0;
-            const unitesVal = comptageUnites[produit.id]?.trim() ? parseFloat(comptageUnites[produit.id]) : 0;
-            if (Number.isNaN(lotsVal) || Number.isNaN(unitesVal)) return NaN;
-            return lotsVal * produit.quantite_par_lot + unitesVal;
-        }
-        const raw = comptageValeurs[produit.id] ?? "";
-        return raw.trim() === "" ? 0 : parseFloat(raw);
-    };
-
-    const handleValiderComptage = async () => {
-        if (isSubmitting) return;
-        if (!activite || !session) return;
-
-        const comptages: { produit_id: string; quantite: number }[] = [];
-        for (const produit of produitsComptage) {
-            const q = calculerQuantiteComptage(produit);
-            if (Number.isNaN(q) || q < 0) {
-                showError(`Quantité invalide pour ${produit.nom}.`);
-                return;
-            }
-            comptages.push({ produit_id: produit.id, quantite: q });
-        }
-
-        setIsSubmitting(true);
-        try {
-            if (comptageMode === "ouverture") {
-                await ouvrirSessionStock({ type_activite: activite, utilisateur_ouverture_id: session.id, comptages });
-            } else if (comptageMode === "fermeture" && sessionOuverte) {
-                await fermerSessionStock({ id: sessionOuverte.id, utilisateur_fermeture_id: session.id, comptages });
-            }
-            closeComptageModal();
-        } finally {
-            setIsSubmitting(false);
-        }
+    const ouvrirComptage = (mode: "ouverture" | "fermeture") => {
+        if (!activite) return;
+        router.push({ pathname: "/inventaire/[mode]", params: { mode, activite } });
     };
 
     if (etablissement?.type === "les_deux" && !activiteChoisie) {
@@ -295,7 +268,7 @@ export default function StockScreen() {
                 </View>
                 {!sessionOuverte && sessionsActivite.length > 0 && (
                     <TouchableOpacity
-                        onPress={() => openComptageModal("ouverture")}
+                        onPress={() => ouvrirComptage("ouverture")}
                         style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}
                     >
                         <Text style={{ fontSize: theme.size_one, color: "white", fontWeight: "bold" }}>Ouvrir l'inventaire</Text>
@@ -310,7 +283,7 @@ export default function StockScreen() {
                         <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding }}>
                             <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>Aucun inventaire en cours. Comptez le stock actuel de chaque produit pour ouvrir la journée.</Text>
                             <TouchableOpacity
-                                onPress={() => openComptageModal("ouverture")}
+                                onPress={() => ouvrirComptage("ouverture")}
                                 style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
                             >
                                 <Text style={{ fontSize: theme.size_two, color: "white" }}>Ouvrir l'inventaire</Text>
@@ -325,7 +298,7 @@ export default function StockScreen() {
                                 Ouvert {formaterDateRelative(sessionOuverte.date_ouverture).toLowerCase()}
                             </Text>
                             <TouchableOpacity
-                                onPress={() => openComptageModal("fermeture")}
+                                onPress={() => ouvrirComptage("fermeture")}
                                 style={{ backgroundColor: "white", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
                             >
                                 <Text style={{ fontSize: theme.size_two, color: "#0f86e7", fontWeight: "bold" }}>Fermer l'inventaire</Text>
@@ -376,7 +349,7 @@ export default function StockScreen() {
                         <View style={{ gap: 8 }}>
                             <Text style={{ fontSize: theme.size_two, fontWeight: "bold", marginTop: theme.internal_padding }}>Historique</Text>
                             <View style={{ gap: 3, borderRadius: theme.internal_radius, overflow: "hidden" }}>
-                                {historique.map(({ session: s, nombreProduitsOuverture, totalReappro, totalFermeture }) => (
+                                {historique.map(({ session: s, nombreProduitsOuverture, reappro, restant }) => (
                                     <TouchableOpacity
                                         key={s.id}
                                         onPress={() => router.push({ pathname: "/session-stock/[id]", params: { id: s.id } })}
@@ -389,7 +362,7 @@ export default function StockScreen() {
                                             <ChevronRight color="black" size={18} strokeWidth={1} />
                                         </View>
                                         <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>
-                                            {nombreProduitsOuverture} produit{nombreProduitsOuverture > 1 ? "s" : ""} à l'ouverture · +{totalReappro} réappro. · {s.statut === "fermee" ? `${totalFermeture} à la fermeture` : "en cours"}
+                                            {nombreProduitsOuverture} produit{nombreProduitsOuverture > 1 ? "s" : ""} à l'ouverture · +{reappro} réappro. · {s.statut === "fermee" ? `${restant} à la fermeture` : "en cours"}
                                         </Text>
                                         <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>
                                             Ouvert {formaterDateRelative(s.date_ouverture).toLowerCase()}
@@ -521,85 +494,6 @@ export default function StockScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
-            <Modal visible={comptageMode !== null} animationType="slide" onRequestClose={closeComptageModal}>
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-                    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>
-                        <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
-                            <TouchableOpacity onPress={closeComptageModal}>
-                                <ArrowLeft color="black" size={22} strokeWidth={1.5} />
-                            </TouchableOpacity>
-                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>
-                                {comptageMode === "ouverture" ? "Inventaire d'ouverture" : "Inventaire de fermeture"}
-                            </Text>
-                            <View style={{ width: 22 }} />
-                        </View>
-                        <ScrollView style={{ flex: 1 }}>
-                            <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                                {categories.map((categorie) => {
-                                    const produits = (produitsQuery?.findBy("categorie_id", categorie.id) ?? []).slice().sort((a, b) => a.nom.localeCompare(b.nom));
-                                    if (produits.length === 0) return null;
-                                    return (
-                                        <View key={categorie.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding_2 }}>
-                                            <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{categorie.nom}</Text>
-                                            {produits.map((produit) => produit.quantite_par_lot ? (
-                                                <View key={produit.id} style={{ gap: 4 }}>
-                                                    <Text style={{ fontSize: theme.size_two }}>{produit.nom} <Text style={{ opacity: 0.5 }}>(lot de {produit.quantite_par_lot})</Text></Text>
-                                                    <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
-                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, flex: 1, backgroundColor: "#f5f5f5", paddingHorizontal: theme.internal_padding_2 }}>
-                                                            <Text style={{ fontSize: theme.size_two }}>Lots</Text>
-                                                            <TextInput
-                                                                value={comptageLots[produit.id] ?? ""}
-                                                                onChangeText={(v) => setComptageLots((prev) => ({ ...prev, [produit.id]: v }))}
-                                                                keyboardType="decimal-pad"
-                                                                placeholder="Lots"
-                                                                placeholderTextColor={"#aaaaaa"}
-                                                                style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, textAlign: "right", color: "black" }}
-                                                            />
-                                                        </View>
-                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, flex: 1, backgroundColor: "#f5f5f5", paddingHorizontal: theme.internal_padding_2 }}>
-                                                            <Text style={{ fontSize: theme.size_two }}>Unités</Text>
-                                                            <TextInput
-                                                                value={comptageUnites[produit.id] ?? ""}
-                                                                onChangeText={(v) => setComptageUnites((prev) => ({ ...prev, [produit.id]: v }))}
-                                                                keyboardType="numeric"
-                                                                placeholder="+ unités"
-                                                                placeholderTextColor={"#aaaaaa"}
-                                                                style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, textAlign: "right", color: "black" }}
-                                                            />
-                                                        </View>
-
-                                                    </View>
-                                                </View>
-                                            ) : (
-                                                <View key={produit.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.internal_padding_2 }}>
-                                                    <Text style={{ fontSize: theme.size_two, flex: 1 }}>{produit.nom}</Text>
-                                                    <TextInput
-                                                        value={comptageValeurs[produit.id] ?? ""}
-                                                        onChangeText={(v) => setComptageValeurs((prev) => ({ ...prev, [produit.id]: v }))}
-                                                        keyboardType="numeric"
-                                                        placeholder="0"
-                                                        placeholderTextColor={"#aaaaaa"}
-                                                        style={{ width: 90, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, textAlign: "right", color: "black" }}
-                                                    />
-                                                </View>
-                                            ))}
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        </ScrollView>
-                        <View style={{ padding: theme.screenPadding }}>
-                            <TouchableOpacity
-                                onPress={handleValiderComptage}
-                                disabled={isSubmitting}
-                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                            >
-                                <Text style={{ fontSize: theme.size_two, color: "white" }}>Valider l'inventaire</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
 
             <Modal visible={listMode !== null} animationType="slide" onRequestClose={closeOperationList}>
                 <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>

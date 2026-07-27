@@ -30,6 +30,7 @@ function RootNavigator() {
         <Stack.Screen name="activite/[type]" />
         <Stack.Screen name="session/[id]" />
         <Stack.Screen name="session-stock/[id]" />
+        <Stack.Screen name="inventaire/[mode]" />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="welcome" />

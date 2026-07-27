@@ -37,6 +37,18 @@ export function formaterHeure(date: Date | string): string {
     return FORMATEUR_HEURE.format(d);
 }
 
+/**
+ * Jour calendaire local (yyyy-mm-dd) d'un timestamp stocké en ISO UTC.
+ * Nécessaire pour regrouper par journée : une session ouverte à 00h30 locale
+ * est enregistrée la veille en UTC.
+ */
+export function jourLocal(date: Date | string): string {
+    const d = typeof date === "string" ? new Date(date) : date;
+    const mois = String(d.getMonth() + 1).padStart(2, "0");
+    const jour = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${mois}-${jour}`;
+}
+
 export function formaterDateCourte(date: Date | string): string {
     const d = typeof date === "string" ? new Date(date) : date;
     return FORMATEUR_DATE_COURTE.format(d);
