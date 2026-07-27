@@ -27,7 +27,7 @@ export interface Produit extends DatabaseRow {
   seuil_alerte?: number | null;
 }
 
-export type TypeMouvementStock = "reapprovisionnement" | "perte" | "inventaire_ouverture" | "inventaire_fermeture";
+export type TypeMouvementStock = "reapprovisionnement" | "perte" | "vente" | "inventaire_ouverture" | "inventaire_fermeture";
 export type CategoriePerte = "casse" | "peremption" | "offert" | "inexplique";
 export type StatutSessionStock = "ouverte" | "fermee";
 
@@ -52,6 +52,9 @@ export interface MouvementStock extends DatabaseRow {
   motif?: string | null;
   utilisateur_id: string;
   date: string;
+  /** Renseigné uniquement pour les mouvements `vente` : permet de rejouer/annuler
+   *  la sortie de stock quand la commande est modifiée ou supprimée. */
+  commande_id?: string | null;
 }
 
 export interface Utilisateur extends DatabaseRow {
@@ -198,4 +201,5 @@ export const MouvementStockModel = factory.createModel<MouvementStock>("mouvemen
   motif: "TEXT",
   utilisateur_id: "TEXT NOT NULL",
   date: "TEXT NOT NULL",
+  commande_id: "TEXT",
 });

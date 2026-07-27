@@ -6,7 +6,7 @@ import { Produit, TypeActivite } from "@/Database/db";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, ChevronDown, ChevronRight, Search, X } from "lucide-react-native";
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
@@ -22,7 +22,7 @@ export default function InventaireScreen() {
     const mode: Mode = params.mode === "fermeture" ? "fermeture" : "ouverture";
     const activite: TypeActivite | null = params.activite === "bar" || params.activite === "restaurant" ? params.activite : null;
 
-    const { categoriesQuery, produitsQuery, sessionsStockQuery, ouvrirSessionStock, fermerSessionStock } = useDatabase();
+    const { categoriesQuery, produitsQuery, sessionsStockQuery, mouvementsStockQuery, ouvrirSessionStock, fermerSessionStock } = useDatabase();
     const { session } = useAuth();
     const { showError } = useAlert();
     const insets = useSafeAreaInsets();
@@ -40,9 +40,28 @@ export default function InventaireScreen() {
     const categories = (activite ? categoriesQuery?.findBy("type", activite) : []) ?? [];
     const tousProduits = categories.flatMap((c) => produitsQuery?.findBy("categorie_id", c.id) ?? []);
 
-    const sessionOuverte = ((activite ? sessionsStockQuery?.findBy("type_activite", activite) : []) ?? [])
+    const sessionsActivite = (activite ? sessionsStockQuery?.findBy("type_activite", activite) : []) ?? [];
+    const sessionOuverte = sessionsActivite
         .filter((s) => s.statut === "ouverte")
         .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
+
+    // Comptage de la dernière fermeture : c'est l'état de référence du stock à l'ouverture.
+    // Rien ne bouge rideau baissé, donc valider sans rien saisir doit reconduire ces
+    // quantités à l'identique — surtout pas les remettre à zéro.
+    const derniereFermeture = new Map<string, number>();
+    const derniereSessionFermee = sessionsActivite
+        .filter((s) => s.statut === "fermee" && s.date_fermeture)
+        .sort((a, b) => (b.date_fermeture ?? "").localeCompare(a.date_fermeture ?? ""))[0] ?? null;
+
+    if (derniereSessionFermee) {
+        for (const mouvement of mouvementsStockQuery?.findBy("session_id", derniereSessionFermee.id) ?? []) {
+            if (mouvement.type === "inventaire_fermeture") derniereFermeture.set(mouvement.produit_id, mouvement.quantite);
+        }
+    }
+
+    /** Quantité enregistrée si l'utilisateur ne touche pas à la ligne. */
+    const referenceDe = (produit: Produit) =>
+        mode === "ouverture" ? derniereFermeture.get(produit.id) ?? produit.stock_actuel ?? 0 : produit.stock_actuel ?? 0;
 
     const filtre = recherche.trim().toLowerCase();
     const groupes = categories
@@ -62,6 +81,7 @@ export default function InventaireScreen() {
             : (valeurs[produit.id] ?? "").trim() !== "";
 
     const quantiteDe = (produit: Produit): number => {
+        if (!estCompte(produit)) return referenceDe(produit);
         if (produit.quantite_par_lot) {
             const nbLots = enNombre(lots[produit.id]);
             const nbUnites = enNombre(unites[produit.id]);
@@ -73,7 +93,7 @@ export default function InventaireScreen() {
 
     const produitsComptes = tousProduits.filter(estCompte);
     const produitsNonComptes = tousProduits.filter((p) => !estCompte(p));
-    const totalUnites = produitsComptes.reduce((somme, p) => {
+    const totalUnites = tousProduits.reduce((somme, p) => {
         const q = quantiteDe(p);
         return somme + (Number.isNaN(q) ? 0 : q);
     }, 0);
@@ -140,7 +160,11 @@ export default function InventaireScreen() {
     }
 
     return (
-        <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>
+        // Un seul KeyboardAvoidingView, à la racine, sinon les deux compensent la même
+        // hauteur de clavier chacun de leur côté. `behavior` est explicite sur les deux
+        // plateformes : en edge-to-edge (défaut Android depuis SDK 54) la fenêtre n'est
+        // plus redimensionnée par le clavier, donc `undefined` ne faisait plus rien.
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>
             <EnTete titre={titre} />
 
             <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: theme.internal_padding_2, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
@@ -148,7 +172,7 @@ export default function InventaireScreen() {
                     <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>
                         {produitsComptes.length} / {tousProduits.length} produit{tousProduits.length > 1 ? "s" : ""} compté{produitsComptes.length > 1 ? "s" : ""}
                     </Text>
-                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{totalUnites} unité{totalUnites > 1 ? "s" : ""}</Text>
+                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{totalUnites} unité{totalUnites > 1 ? "s" : ""} en stock</Text>
                 </View>
                 <View style={{ height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", overflow: "hidden" }}>
                     <Animated.View
@@ -174,78 +198,78 @@ export default function InventaireScreen() {
                 </View>
             </View>
 
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: theme.internal_padding }}>
-                    <View style={{ paddingHorizontal: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        {groupes.length === 0 && (
-                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit ne correspond.</Text>
-                        )}
+            <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: theme.internal_padding }}>
+                <View style={{ paddingHorizontal: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
+                    {groupes.length === 0 && (
+                        <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit ne correspond.</Text>
+                    )}
 
-                        {groupes.map(({ categorie, produits }) => {
-                            const replie = categoriesRepliees[categorie.id] ?? false;
-                            const comptesCategorie = produits.filter(estCompte).length;
+                    {groupes.map(({ categorie, produits }) => {
+                        const replie = categoriesRepliees[categorie.id] ?? false;
+                        const comptesCategorie = produits.filter(estCompte).length;
 
-                            return (
-                                <Animated.View
-                                    key={categorie.id}
-                                    layout={LinearTransition.duration(220)}
-                                    style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding }}
+                        return (
+                            <Animated.View
+                                key={categorie.id}
+                                layout={LinearTransition.duration(220)}
+                                style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding }}
+                            >
+                                <TouchableOpacity
+                                    onPress={() => setCategoriesRepliees((prev) => ({ ...prev, [categorie.id]: !replie }))}
+                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                                 >
-                                    <TouchableOpacity
-                                        onPress={() => setCategoriesRepliees((prev) => ({ ...prev, [categorie.id]: !replie }))}
-                                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{categorie.nom}</Text>
-                                        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
-                                            <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>
-                                                {comptesCategorie}/{produits.length}
-                                            </Text>
-                                            {replie ? (
-                                                <ChevronRight color="black" size={18} strokeWidth={1.5} />
-                                            ) : (
-                                                <ChevronDown color="black" size={18} strokeWidth={1.5} />
-                                            )}
-                                        </View>
-                                    </TouchableOpacity>
+                                    <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{categorie.nom}</Text>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>
+                                            {comptesCategorie}/{produits.length}
+                                        </Text>
+                                        {replie ? (
+                                            <ChevronRight color="black" size={18} strokeWidth={1.5} />
+                                        ) : (
+                                            <ChevronDown color="black" size={18} strokeWidth={1.5} />
+                                        )}
+                                    </View>
+                                </TouchableOpacity>
 
-                                    {!replie && (
-                                        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={{ gap: theme.internal_padding }}>
-                                            {produits.map((produit) => (
-                                                <LigneProduit
-                                                    key={produit.id}
-                                                    produit={produit}
-                                                    compte={estCompte(produit)}
-                                                    quantite={quantiteDe(produit)}
-                                                    valeur={valeurs[produit.id] ?? ""}
-                                                    lots={lots[produit.id] ?? ""}
-                                                    unites={unites[produit.id] ?? ""}
-                                                    onValeur={(v) => setValeurs((prev) => ({ ...prev, [produit.id]: v }))}
-                                                    onLots={(v) => setLots((prev) => ({ ...prev, [produit.id]: v }))}
-                                                    onUnites={(v) => setUnites((prev) => ({ ...prev, [produit.id]: v }))}
-                                                    ordreChamps={ordreChamps}
-                                                    enregistrerChamp={(cle, ref) => {
-                                                        champs.current[cle] = ref;
-                                                    }}
-                                                    onSuivant={focusSuivant}
-                                                />
-                                            ))}
-                                        </Animated.View>
-                                    )}
-                                </Animated.View>
-                            );
-                        })}
-                    </View>
-                </ScrollView>
-
-                <View style={{ padding: theme.screenPadding, paddingBottom: Math.max(insets.bottom, theme.screenPadding), backgroundColor: "#f5f5f5" }}>
-                    <TouchableOpacity
-                        onPress={ouvrirRecap}
-                        style={{ backgroundColor: COULEUR_PRIMAIRE, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                    >
-                        <Text style={{ fontSize: theme.size_two, color: "white", fontWeight: "bold" }}>Valider l'inventaire</Text>
-                    </TouchableOpacity>
+                                {!replie && (
+                                    <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={{ gap: theme.internal_padding }}>
+                                        {produits.map((produit) => (
+                                            <LigneProduit
+                                                key={produit.id}
+                                                produit={produit}
+                                                compte={estCompte(produit)}
+                                                quantite={quantiteDe(produit)}
+                                                reference={referenceDe(produit)}
+                                                labelReference={mode === "ouverture" ? "dernière fermeture" : "théorique"}
+                                                valeur={valeurs[produit.id] ?? ""}
+                                                lots={lots[produit.id] ?? ""}
+                                                unites={unites[produit.id] ?? ""}
+                                                onValeur={(v) => setValeurs((prev) => ({ ...prev, [produit.id]: v }))}
+                                                onLots={(v) => setLots((prev) => ({ ...prev, [produit.id]: v }))}
+                                                onUnites={(v) => setUnites((prev) => ({ ...prev, [produit.id]: v }))}
+                                                ordreChamps={ordreChamps}
+                                                enregistrerChamp={(cle, ref) => {
+                                                    champs.current[cle] = ref;
+                                                }}
+                                                onSuivant={focusSuivant}
+                                            />
+                                        ))}
+                                    </Animated.View>
+                                )}
+                            </Animated.View>
+                        );
+                    })}
                 </View>
-            </KeyboardAvoidingView>
+            </ScrollView>
+
+            <View style={{ padding: theme.screenPadding, paddingBottom: Math.max(insets.bottom, theme.screenPadding), backgroundColor: "#f5f5f5" }}>
+                <TouchableOpacity
+                    onPress={ouvrirRecap}
+                    style={{ backgroundColor: COULEUR_PRIMAIRE, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white", fontWeight: "bold" }}>Valider l'inventaire</Text>
+                </TouchableOpacity>
+            </View>
 
             <Modal visible={recapVisible} transparent animationType="slide" onRequestClose={() => setRecapVisible(false)}>
                 <View style={{ flex: 1, justifyContent: "flex-end" }}>
@@ -259,11 +283,12 @@ export default function InventaireScreen() {
 
                         <View style={{ gap: 4 }}>
                             <Text style={{ fontSize: theme.size_two }}>
-                                {produitsComptes.length} produit{produitsComptes.length > 1 ? "s" : ""} compté{produitsComptes.length > 1 ? "s" : ""} · {totalUnites} unité{totalUnites > 1 ? "s" : ""}
+                                {produitsComptes.length} produit{produitsComptes.length > 1 ? "s" : ""} compté{produitsComptes.length > 1 ? "s" : ""} · {totalUnites} unité{totalUnites > 1 ? "s" : ""} au total
                             </Text>
                             {produitsNonComptes.length > 0 && (
-                                <Text style={{ fontSize: theme.size_one, color: COULEUR_MANQUANT }}>
-                                    {produitsNonComptes.length} produit{produitsNonComptes.length > 1 ? "s" : ""} non compté{produitsNonComptes.length > 1 ? "s" : ""}, {produitsNonComptes.length > 1 ? "ils seront enregistrés" : "il sera enregistré"} à 0.
+                                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>
+                                    {produitsNonComptes.length} produit{produitsNonComptes.length > 1 ? "s" : ""} non recompté{produitsNonComptes.length > 1 ? "s" : ""} :{" "}
+                                    {mode === "ouverture" ? "la quantité de la dernière fermeture est reconduite." : "le stock théorique est reconduit."}
                                 </Text>
                             )}
                         </View>
@@ -271,9 +296,10 @@ export default function InventaireScreen() {
                         {produitsNonComptes.length > 0 && (
                             <ScrollView style={{ maxHeight: 140 }} contentContainerStyle={{ gap: 2 }}>
                                 {produitsNonComptes.map((p) => (
-                                    <Text key={p.id} style={{ fontSize: theme.size_one, opacity: 0.6 }}>
-                                        {p.nom}
-                                    </Text>
+                                    <View key={p.id} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{p.nom}</Text>
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{referenceDe(p)}</Text>
+                                    </View>
                                 ))}
                             </ScrollView>
                         )}
@@ -296,7 +322,7 @@ export default function InventaireScreen() {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -315,6 +341,8 @@ type LigneProduitProps = {
     produit: Produit;
     compte: boolean;
     quantite: number;
+    reference: number;
+    labelReference: string;
     valeur: string;
     lots: string;
     unites: string;
@@ -330,6 +358,8 @@ function LigneProduit({
     produit,
     compte,
     quantite,
+    reference,
+    labelReference,
     valeur,
     lots,
     unites,
@@ -340,8 +370,7 @@ function LigneProduit({
     enregistrerChamp,
     onSuivant,
 }: LigneProduitProps) {
-    const theorique = produit.stock_actuel ?? 0;
-    const ecart = compte && !Number.isNaN(quantite) ? quantite - theorique : null;
+    const ecart = compte && !Number.isNaN(quantite) ? quantite - reference : null;
 
     const proprietesChamp = (cle: string) => {
         const dernier = ordreChamps.indexOf(cle) === ordreChamps.length - 1;
@@ -396,7 +425,8 @@ function LigneProduit({
             {ecart !== null && (
                 <Animated.View entering={FadeIn.duration(140)}>
                     <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>
-                        {produit.quantite_par_lot ? `${quantite} unités · ` : ""}théorique {theorique}
+                        {produit.quantite_par_lot ? `${quantite} unités · ` : ""}
+                        {labelReference} {reference}
                         {ecart !== 0 && (
                             <Text style={{ fontSize: theme.size_one, color: ecart < 0 ? COULEUR_MANQUANT : COULEUR_SURPLUS, fontWeight: "bold" }}>
                                 {" "}

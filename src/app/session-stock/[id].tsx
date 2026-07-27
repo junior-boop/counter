@@ -30,9 +30,10 @@ export default function SessionStockDetailScreen() {
             const ouverture = mvts.find((m) => m.type === "inventaire_ouverture")?.quantite ?? null;
             const totalReappro = mvts.filter((m) => m.type === "reapprovisionnement").reduce((sum, m) => sum + m.quantite, 0);
             const totalPerte = mvts.filter((m) => m.type === "perte").reduce((sum, m) => sum + m.quantite, 0);
+            const totalVente = mvts.filter((m) => m.type === "vente").reduce((sum, m) => sum + m.quantite, 0);
             const fermetureMouvement = mvts.find((m) => m.type === "inventaire_fermeture") ?? null;
             const pertes = mvts.filter((m) => m.type === "perte");
-            return { produitId, produit, ouverture, totalReappro, totalPerte, fermetureMouvement, pertes };
+            return { produitId, produit, ouverture, totalReappro, totalPerte, totalVente, fermetureMouvement, pertes };
         })
         .sort((a, b) => (a.produit?.nom ?? "").localeCompare(b.produit?.nom ?? ""));
 
@@ -69,7 +70,7 @@ export default function SessionStockDetailScreen() {
                             {parProduit.length === 0 && (
                                 <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun mouvement enregistré.</Text>
                             )}
-                            {parProduit.map(({ produitId, produit, ouverture, totalReappro, totalPerte, fermetureMouvement, pertes }) => (
+                            {parProduit.map(({ produitId, produit, ouverture, totalReappro, totalPerte, totalVente, fermetureMouvement, pertes }) => (
                                 <View key={produitId} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
                                     <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{produit?.nom ?? "Produit supprimé"}</Text>
                                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
@@ -78,6 +79,9 @@ export default function SessionStockDetailScreen() {
                                         )}
                                         {totalReappro > 0 && (
                                             <Text style={{ fontSize: theme.size_one, color: "#0f86e7" }}>Réappro. : +{totalReappro}</Text>
+                                        )}
+                                        {totalVente > 0 && (
+                                            <Text style={{ fontSize: theme.size_one, opacity: 0.7 }}>Vendus : -{totalVente}</Text>
                                         )}
                                         {totalPerte > 0 && (
                                             <Text style={{ fontSize: theme.size_one, color: "#e74c3c" }}>Pertes : -{totalPerte}</Text>

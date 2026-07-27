@@ -24,6 +24,21 @@ export async function createTable() {
   } catch {
     // colonne déjà présente
   }
+  try {
+    await MouvementStockModel.orm.run("ALTER TABLE mouvements_stock ADD COLUMN commande_id TEXT");
+  } catch {
+    // colonne déjà présente
+  }
+}
+
+/**
+ * Session de stock actuellement ouverte pour une activité.
+ * Les commandes sont rattachées à une session de *caisse* ; c'est ce point de
+ * jonction qui permet de retrouver le stock du jour à décrémenter.
+ */
+export async function sessionOuvertePour(type_activite: TypeActivite): Promise<SessionStock | null> {
+  const sessions = await SessionStockModel.findAll({ where: { type_activite, statut: "ouverte" } });
+  return sessions.sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
 }
 
 export async function getAllSessions(): Promise<SessionStock[]> {

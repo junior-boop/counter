@@ -1,5 +1,6 @@
 import { useAuth } from "@/Auth/auth.context";
 import { useAlert } from "@/components/alert/alert.context";
+import { CommandesTimelineChart } from "@/components/CommandesTimelineChart";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { MouvementCaisse, Produit } from "@/Database/db";
@@ -14,7 +15,7 @@ import theme from "../../constants/constant-style";
 
 export default function SessionDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { etablissement, sessionsCaisseQuery, mouvementsCaisseQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
+    const { etablissement, sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
     const { session: utilisateur } = useAuth();
     const { showError, confirm } = useAlert();
 
@@ -34,6 +35,16 @@ export default function SessionDetailScreen() {
     const entrees = mouvements.filter((m) => m.type === "entree").reduce((sum, m) => sum + m.montant, 0);
     const sorties = mouvements.filter((m) => m.type === "sortie").reduce((sum, m) => sum + m.montant, 0);
     const montantAttendu = session ? session.montant_ouverture + entrees - sorties : 0;
+
+    const commandes = commandesQuery?.findBy("session_id", id) ?? [];
+
+    // Session de stock du jour pour la même activité : fermer la caisse doit aussi
+    // solder le stock, sinon les ventes continuent de courir sur un inventaire ouvert.
+    const sessionStockOuverte = session
+        ? (sessionsStockQuery?.findBy("type_activite", session.type_activite) ?? [])
+              .filter((s) => s.statut === "ouverte")
+              .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null
+        : null;
 
     const categoriesActivite = session ? (categoriesQuery?.findBy("type", session.type_activite) ?? []) : [];
 
@@ -147,13 +158,23 @@ export default function SessionDetailScreen() {
             showError("Le montant compté doit être positif.");
             return;
         }
-        const ok = await confirm("Fermer la caisse avec ce montant ? Cette action est définitive.", { confirmLabel: "Fermer" });
+        const message = sessionStockOuverte
+            ? "Fermer la caisse avec ce montant ? Vous enchaînerez sur l'inventaire de fermeture du stock. Cette action est définitive."
+            : "Fermer la caisse avec ce montant ? Cette action est définitive.";
+        const ok = await confirm(message, { confirmLabel: "Fermer" });
         if (!ok) return;
         setIsSubmitting(true);
         try {
             const ecart = montant - montantAttendu;
             await fermerSessionCaisse({ id: session.id, montant_fermeture: montant, ecart, utilisateur_fermeture_id: utilisateur.id });
             setMontantFermeture("");
+
+            // La session de stock n'est jamais soldée automatiquement : sans recomptage
+            // physique l'écart vaudrait 0 par construction, ce qui vide l'app de son
+            // intérêt. On enchaîne donc sur l'inventaire, qui la fermera pour de bon.
+            if (sessionStockOuverte) {
+                router.push({ pathname: "/inventaire/[mode]", params: { mode: "fermeture", activite: session.type_activite } });
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -211,6 +232,10 @@ export default function SessionDetailScreen() {
                                     <Plus color="#0f86e7" size={20} strokeWidth={1.5} />
                                     <Text style={{ fontSize: theme.size_two, color: "#0f86e7", fontWeight: "bold" }}>Ajouter un mouvement</Text>
                                 </TouchableOpacity>
+                            )}
+
+                            {commandes.length > 0 && (
+                                <CommandesTimelineChart commandes={commandes} debut={session.date_ouverture} fin={session.date_fermeture} />
                             )}
 
                             <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Mouvements de caisse</Text>
