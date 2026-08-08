@@ -28,6 +28,7 @@ export default function SettingsScreen() {
     const { session, signOut } = useAuth();
     const { confirm } = useAlert();
     const border = useSafeAreaInsets();
+    const estAdmin = session?.role === "patron" || session?.role === "gerant";
 
     const handleDeconnexion = async () => {
         const ok = await confirm("Voulez-vous vous déconnecter ?", { confirmLabel: "Se déconnecter" });
@@ -41,59 +42,63 @@ export default function SettingsScreen() {
                     <Text style={{ fontSize: theme.size_four }}>Préférences</Text>
                 </View>
 
-                <Titre titre="Établissement" />
-                <View style={{ paddingHorizontal: theme.screenPadding }}>
-                    <Text style={{ fontSize: theme.size_one, opacity: 0.5, marginBottom: theme.internal_padding_2 }}>
-                        Nom et type (bar, restaurant ou les deux) de votre établissement. Ce choix détermine les activités et fonctionnalités disponibles dans l'application.
-                    </Text>
-                    <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
-                        <TouchableOpacity style={styles.button} onPress={() => router.push("/etablissement")}>
-                            <View style={{ gap: 2 }}>
-                                <Text style={{ fontSize: theme.size_two }}>{etablissement?.nom || "Configurer l'établissement"}</Text>
-                                {etablissement && (
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Type d'activité: {TYPE_LABELS[etablissement.type]}</Text>
+                {estAdmin && (
+                    <>
+                        <Titre titre="Établissement" />
+                        <View style={{ paddingHorizontal: theme.screenPadding }}>
+                            <Text style={{ fontSize: theme.size_one, opacity: 0.5, marginBottom: theme.internal_padding_2 }}>
+                                Nom et type (bar, restaurant ou les deux) de votre établissement. Ce choix détermine les activités et fonctionnalités disponibles dans l'application.
+                            </Text>
+                            <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
+                                <TouchableOpacity style={styles.button} onPress={() => router.push("/etablissement")}>
+                                    <View style={{ gap: 2 }}>
+                                        <Text style={{ fontSize: theme.size_two }}>{etablissement?.nom || "Configurer l'établissement"}</Text>
+                                        {etablissement && (
+                                            <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Type d'activité: {TYPE_LABELS[etablissement.type]}</Text>
+                                        )}
+                                    </View>
+                                    <ChevronRight color="black" size={20} strokeWidth={1} />
+                                </TouchableOpacity>
+                                {
+                                    etablissement?.commande_temps_reel_active && (
+                                        <View style={[styles.button, { gap: 2 }]}>
+                                            <Text style={{ fontSize: theme.size_two, color: "#0f86e7" }}>Commande en temps réel activée</Text>
+                                        </View>
+                                    )
+
+                                }
+                            </View>
+                        </View>
+
+                        <Titre titre="Activités" />
+                        <View style={{ paddingHorizontal: theme.screenPadding }}>
+                            <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
+                                {etablissement?.type !== "restaurant" && (
+                                    <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "bar" } })}>
+                                        <Text style={{ fontSize: theme.size_two }}>Snack-Bar | Bars</Text>
+                                        <ChevronRight color="black" size={20} strokeWidth={1} />
+                                    </TouchableOpacity>
+                                )}
+                                {etablissement?.type !== "bar" && (
+                                    <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "restaurant" } })}>
+                                        <Text style={{ fontSize: theme.size_two }}>Café | Restaurants</Text>
+                                        <ChevronRight color="black" size={20} strokeWidth={1} />
+                                    </TouchableOpacity>
                                 )}
                             </View>
-                            <ChevronRight color="black" size={20} strokeWidth={1} />
-                        </TouchableOpacity>
-                        {
-                            etablissement?.commande_temps_reel_active && (
-                                <View style={[styles.button, { gap: 2 }]}>
-                                    <Text style={{ fontSize: theme.size_two, color: "#0f86e7" }}>Commande en temps réel activée</Text>
-                                </View>
-                            )
+                        </View>
 
-                        }
-                    </View>
-                </View>
-
-                <Titre titre="Activités" />
-                <View style={{ paddingHorizontal: theme.screenPadding }}>
-                    <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
-                        {etablissement?.type !== "restaurant" && (
-                            <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "bar" } })}>
-                                <Text style={{ fontSize: theme.size_two }}>Snack-Bar | Bars</Text>
-                                <ChevronRight color="black" size={20} strokeWidth={1} />
-                            </TouchableOpacity>
-                        )}
-                        {etablissement?.type !== "bar" && (
-                            <TouchableOpacity style={styles.button} onPress={() => router.push({ pathname: "/activite/[type]", params: { type: "restaurant" } })}>
-                                <Text style={{ fontSize: theme.size_two }}>Café | Restaurants</Text>
-                                <ChevronRight color="black" size={20} strokeWidth={1} />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
-
-                <Titre titre="Utilisateurs & rôles" />
-                <View style={{ paddingHorizontal: theme.screenPadding }}>
-                    <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
-                        <TouchableOpacity style={styles.button} onPress={() => router.push("/utilisateurs")}>
-                            <Text style={{ fontSize: theme.size_two }}>Gérer les utilisateurs</Text>
-                            <ChevronRight color="black" size={20} strokeWidth={1} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                        <Titre titre="Utilisateurs & rôles" />
+                        <View style={{ paddingHorizontal: theme.screenPadding }}>
+                            <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
+                                <TouchableOpacity style={styles.button} onPress={() => router.push("/utilisateurs")}>
+                                    <Text style={{ fontSize: theme.size_two }}>Gérer les utilisateurs</Text>
+                                    <ChevronRight color="black" size={20} strokeWidth={1} />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </>
+                )}
 
                 <Titre titre="Compte" />
                 <View style={{ paddingHorizontal: theme.screenPadding }}>

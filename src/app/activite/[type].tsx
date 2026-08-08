@@ -27,29 +27,46 @@ export default function ActiviteScreen() {
     const [selectedProduit, setSelectedProduit] = useState<Produit | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState({ nom: "", prix: "", quantite_par_lot: "" });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const categories = categoriesQuery?.findBy("type", type) ?? [];
 
     const handleAddCategorie = async () => {
+        if (isSubmitting) return;
         if (!nouvelleCategorie.trim()) {
             showError("Le nom de la catégorie est requis.");
             return;
         }
-        await addCategorie({ nom: nouvelleCategorie.trim(), type });
-        setNouvelleCategorie("");
+        setIsSubmitting(true);
+        try {
+            await addCategorie({ nom: nouvelleCategorie.trim(), type });
+            setNouvelleCategorie("");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleAddProduit = async (categorie_id: string) => {
+        if (isSubmitting) return;
         const prix = parseFloat(nouveauProduit.prix);
-        if (!nouveauProduit.nom.trim() || Number.isNaN(prix)) {
+        if (!nouveauProduit.nom.trim() || Number.isNaN(prix) || prix <= 0) {
             showError("Le nom et le prix du produit sont requis.");
             return;
         }
-        const quantite_par_lot = type === "bar" && nouveauProduit.quantite_par_lot.trim()
-            ? parseInt(nouveauProduit.quantite_par_lot, 10)
-            : undefined;
-        await addProduit({ nom: nouveauProduit.nom.trim(), prix, categorie_id, quantite_par_lot });
-        setNouveauProduit({ nom: "", prix: "", quantite_par_lot: "" });
+        const quantiteBrute = nouveauProduit.quantite_par_lot.trim();
+        const quantiteParLotParsee = quantiteBrute ? parseInt(quantiteBrute, 10) : undefined;
+        if (type === "bar" && quantiteBrute && (Number.isNaN(quantiteParLotParsee) || (quantiteParLotParsee as number) <= 0)) {
+            showError("La quantité par lot doit être un nombre positif.");
+            return;
+        }
+        const quantite_par_lot = type === "bar" ? quantiteParLotParsee : undefined;
+        setIsSubmitting(true);
+        try {
+            await addProduit({ nom: nouveauProduit.nom.trim(), prix, categorie_id, quantite_par_lot });
+            setNouveauProduit({ nom: "", prix: "", quantite_par_lot: "" });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const closeSheet = () => {
@@ -73,25 +90,39 @@ export default function ActiviteScreen() {
     };
 
     const handleUpdateProduit = async () => {
-        if (!selectedProduit) return;
+        if (isSubmitting || !selectedProduit) return;
         const prix = parseFloat(editForm.prix);
-        if (!editForm.nom.trim() || Number.isNaN(prix)) {
+        if (!editForm.nom.trim() || Number.isNaN(prix) || prix <= 0) {
             showError("Le nom et le prix du produit sont requis.");
             return;
         }
-        const quantite_par_lot = type === "bar" && editForm.quantite_par_lot.trim()
-            ? parseInt(editForm.quantite_par_lot, 10)
-            : undefined;
-        await updateProduit({ ...selectedProduit, nom: editForm.nom.trim(), prix, quantite_par_lot });
-        closeSheet();
+        const quantiteBrute = editForm.quantite_par_lot.trim();
+        const quantiteParLotParsee = quantiteBrute ? parseInt(quantiteBrute, 10) : undefined;
+        if (type === "bar" && quantiteBrute && (Number.isNaN(quantiteParLotParsee) || (quantiteParLotParsee as number) <= 0)) {
+            showError("La quantité par lot doit être un nombre positif.");
+            return;
+        }
+        const quantite_par_lot = type === "bar" ? quantiteParLotParsee : undefined;
+        setIsSubmitting(true);
+        try {
+            await updateProduit({ ...selectedProduit, nom: editForm.nom.trim(), prix, quantite_par_lot });
+            closeSheet();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleDeleteProduit = async () => {
-        if (!selectedProduit) return;
+        if (isSubmitting || !selectedProduit) return;
         const ok = await confirm(`Supprimer "${selectedProduit.nom}" ?`, { confirmLabel: "Supprimer" });
         if (!ok) return;
-        await deleteProduit(selectedProduit.id);
-        closeSheet();
+        setIsSubmitting(true);
+        try {
+            await deleteProduit(selectedProduit.id);
+            closeSheet();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -115,7 +146,8 @@ export default function ActiviteScreen() {
                             />
                             <TouchableOpacity
                                 onPress={handleAddCategorie}
-                                style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", width: theme.touchTarget, height: theme.touchTarget }}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", width: theme.touchTarget, height: theme.touchTarget }}
                             >
                                 <Plus color="white" size={20} strokeWidth={1.5} />
                             </TouchableOpacity>
@@ -142,8 +174,15 @@ export default function ActiviteScreen() {
                                         <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
                                         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding }}>
                                             <TouchableOpacity onPress={async () => {
+                                                if (isSubmitting) return;
                                                 const ok = await confirm(`Supprimer la catégorie "${categorie.nom}" et ses produits ?`, { confirmLabel: "Supprimer" });
-                                                if (ok) await deleteCategorie(categorie.id);
+                                                if (!ok) return;
+                                                setIsSubmitting(true);
+                                                try {
+                                                    await deleteCategorie(categorie.id);
+                                                } finally {
+                                                    setIsSubmitting(false);
+                                                }
                                             }}>
                                                 <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
                                             </TouchableOpacity>
@@ -195,7 +234,8 @@ export default function ActiviteScreen() {
                                                     )}
                                                     <TouchableOpacity
                                                         onPress={() => handleAddProduit(categorie.id)}
-                                                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", height: theme.touchTarget, width: theme.touchTarget }}
+                                                        disabled={isSubmitting}
+                                                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", height: theme.touchTarget, width: theme.touchTarget }}
                                                     >
                                                         <Plus color="white" size={20} strokeWidth={1.5} />
                                                     </TouchableOpacity>
@@ -220,14 +260,16 @@ export default function ActiviteScreen() {
                                     <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedProduit?.nom}</Text>
                                     <TouchableOpacity
                                         onPress={startEditing}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
+                                        disabled={isSubmitting}
+                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
                                     >
                                         <Pencil color="black" size={18} strokeWidth={1.5} />
                                         <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         onPress={handleDeleteProduit}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
+                                        disabled={isSubmitting}
+                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
                                     >
                                         <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
                                         <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
@@ -265,7 +307,8 @@ export default function ActiviteScreen() {
                                     </View>
                                     <TouchableOpacity
                                         onPress={handleUpdateProduit}
-                                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                                        disabled={isSubmitting}
+                                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
                                     >
                                         <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
                                     </TouchableOpacity>

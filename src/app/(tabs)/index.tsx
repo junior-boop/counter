@@ -1,6 +1,8 @@
 import { Text } from "@/components/text";
 import Titre from "@/components/titre";
+import { useDatabase } from "@/Database/database.context";
 import { formaterMontant } from "@/lib/currency";
+import { formaterDateRelative } from "@/lib/date";
 import { getDate, getDay, getMonth } from "date-fns";
 import { useEffect, useState } from "react";
 import { ScrollView, View } from 'react-native';
@@ -11,6 +13,8 @@ import theme from "../../constants/constant-style";
 
 export default function HomeScreen() {
   const [dday, setDday] = useState<{ jour: string, date: number, mois: string }>({ jour: "-", date: 0, mois: "-" })
+  const { produitsQuery, sessionsCaisseQuery, mouvementsStockQuery } = useDatabase();
+
   const getParcelDate = () => {
     const date = new Date()
     const day = ["Dimanche", 'Lundi', "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
@@ -25,6 +29,18 @@ export default function HomeScreen() {
   useEffect(() => {
     setDday(getParcelDate())
   }, [])
+
+  const sessionCaisseOuverte = (sessionsCaisseQuery?.findAll() ?? []).find((s) => s.statut === "ouverte") ?? null;
+
+  const produitsAlerte = (produitsQuery?.findAll() ?? []).filter(
+    (p) => p.stock_actuel != null && p.seuil_alerte != null && p.stock_actuel <= p.seuil_alerte
+  );
+
+  const dernierEcart = (mouvementsStockQuery?.findAll() ?? [])
+    .filter((m) => m.type === "inventaire_fermeture" && m.ecart != null && m.ecart !== 0)
+    .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
+  const produitEcart = dernierEcart ? produitsQuery?.findById(dernierEcart.produit_id) : null;
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ScrollView>
@@ -34,38 +50,48 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 28, fontWeight: "400" }}>{dday?.date < 10 ? `0${dday?.date}` : dday?.date}, {dday?.mois}</Text>
           </View>
         </View>
+
+        <Titre titre="Caisse" />
         <View style={{ paddingHorizontal: theme.screenPadding }}>
-          <View style={{ borderRadius: theme.radius, height: theme.inner_height_screen * 0.3, padding: theme.internal_padding, backgroundColor: 'white' }}>
-            <View style={{ flex: 1 }}></View>
+          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
+            {sessionCaisseOuverte ? (
+              <>
+                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Session ouverte {formaterDateRelative(sessionCaisseOuverte.date_ouverture)}</Text>
+                <Text style={{ fontSize: theme.size_three, fontWeight: 'bold' }}>{formaterMontant(sessionCaisseOuverte.montant_ouverture)}</Text>
+              </>
+            ) : (
+              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucune session caisse en cours</Text>
+            )}
           </View>
         </View>
-        <Titre titre="Impayers" follow_btn follow_name="Voir plus" />
-        <View style={{ paddingHorizontal: theme.screenPadding, gap: 2 }}>
+
+        <Titre titre="Alertes stock" follow_btn={produitsAlerte.length > 0} follow_link="/stock" follow_name="Voir le stock" />
+        <View style={{ paddingHorizontal: theme.screenPadding }}>
           <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding }}>
-            <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Date de la journée</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: "space-between" }}>
-              <View>
-                <Text style={{ fontSize: theme.size_one, fontWeight: 'bold' }}>Nom du client</Text>
-                <Text style={{ fontSize: theme.size_two }}>Reste : {formaterMontant(2500)}</Text>
-              </View>
-              <View>
-                <Text style={{ fontSize: theme.size_one, textAlign: "right", fontWeight: 'bold' }}>Total Facture</Text>
-                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>{formaterMontant(12500)}</Text>
-              </View>
-            </View>
+            {produitsAlerte.length > 0 ? (
+              <Text style={{ fontSize: theme.size_two, color: "#e74c3c", fontWeight: 'bold' }}>
+                {produitsAlerte.length} produit{produitsAlerte.length > 1 ? "s" : ""} sous le seuil d'alerte
+              </Text>
+            ) : (
+              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucune alerte de stock</Text>
+            )}
           </View>
-          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding }}>
-            <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Date de la journée</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: "space-between" }}>
-              <View>
-                <Text style={{ fontSize: theme.size_one, fontWeight: 'bold' }}>Nom du client</Text>
-                <Text style={{ fontSize: theme.size_two }}>Reste : {formaterMontant(2500)}</Text>
-              </View>
-              <View>
-                <Text style={{ fontSize: theme.size_one, textAlign: "right", fontWeight: 'bold' }}>Total Facture</Text>
-                <Text style={{ fontSize: theme.size_two, textAlign: "right" }}>{formaterMontant(12500)}</Text>
-              </View>
-            </View>
+        </View>
+
+        <Titre titre="Dernier écart détecté" />
+        <View style={{ paddingHorizontal: theme.screenPadding }}>
+          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
+            {dernierEcart ? (
+              <>
+                <Text style={{ fontSize: theme.size_two, fontWeight: 'bold' }}>{produitEcart?.nom ?? "Produit supprimé"}</Text>
+                <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>
+                  Écart : {(dernierEcart.ecart ?? 0) > 0 ? "+" : ""}{dernierEcart.ecart}
+                </Text>
+                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterDateRelative(dernierEcart.date)}</Text>
+              </>
+            ) : (
+              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun écart détecté récemment</Text>
+            )}
           </View>
         </View>
       </ScrollView>
