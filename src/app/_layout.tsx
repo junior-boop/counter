@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from '@/Auth/auth.context';
 import { AlertProvider } from '@/components/alert/alert.context';
 import { DatabaseProvider, useDatabase } from '@/Database/database.context';
+import { enregistrerTachePurgeProduitsActifs } from '@/lib/backgroundTasks';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from "expo-status-bar";
@@ -19,6 +20,10 @@ function RootNavigator() {
   useEffect(() => {
     if (isReady) SplashScreen.hideAsync();
   }, [isReady]);
+
+  useEffect(() => {
+    enregistrerTachePurgeProduitsActifs();
+  }, []);
 
   if (!isReady) return null;
 

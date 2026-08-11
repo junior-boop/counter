@@ -161,7 +161,7 @@ export default function CaisseScreen() {
                                             onPress={() => router.push({ pathname: "/session/[id]", params: { id: s.id } })}
                                             style={{ paddingVertical: theme.internal_padding_2, paddingHorizontal: theme.internal_padding, backgroundColor: "white", borderRadius: theme.internal_radius_2 }}
                                         >
-                                            <Text style={{ fontSize: theme.size_two }}>session du {s.date_fermeture ? formaterDateRelative(s.date_fermeture) : ""}</Text>
+                                            <Text style={{ fontSize: theme.size_two }}>Session du {s.date_fermeture ? formaterDateRelative(s.date_fermeture) : ""}</Text>
                                             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: theme.internal_padding_2 }}>
                                                 <View>
                                                     <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Ouverture : {formaterMontant(s.montant_ouverture)}</Text>

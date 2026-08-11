@@ -110,6 +110,17 @@ export interface LigneCommande extends DatabaseRow {
   quantite: number;
 }
 
+/**
+ * Liste des produits réapprovisionnés récemment ("actifs"). Un produit qui
+ * passe 2 semaines sans réapprovisionnement est purgé de cette table (voir
+ * `Stock.purgerProduitsInactifs`), déclenché à l'ouverture de l'app et par
+ * une tâche en arrière-plan (`src/lib/backgroundTasks.ts`).
+ */
+export interface ProduitActif extends DatabaseRow {
+  id: string; // produit_id
+  derniere_activite: string;
+}
+
 const orm = new SimpleORM("vms-counter.db");
 const factory = new ModelFactory(orm);
 
@@ -180,6 +191,11 @@ export const LigneCommandeModel = factory.createModel<LigneCommande>("lignes_com
   produit_nom: "TEXT NOT NULL",
   prix_unitaire: "REAL NOT NULL",
   quantite: "INTEGER NOT NULL",
+});
+
+export const ProduitActifModel = factory.createModel<ProduitActif>("produits_actifs", {
+  id: "TEXT PRIMARY KEY",
+  derniere_activite: "TEXT NOT NULL",
 });
 
 export const SessionStockModel = factory.createModel<SessionStock>("sessions_stock", {

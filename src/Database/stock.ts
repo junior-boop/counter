@@ -1,9 +1,12 @@
-import { Categorie, CategorieModel, CategoriePerte, MouvementStock, MouvementStockModel, Produit, ProduitModel, SessionStock, SessionStockModel, TypeActivite, TypeMouvementStock } from "./db";
+import { Categorie, CategorieModel, CategoriePerte, MouvementStock, MouvementStockModel, Produit, ProduitActif, ProduitActifModel, ProduitModel, SessionStock, SessionStockModel, TypeActivite, TypeMouvementStock } from "./db";
 import { generateUUID } from "./uuid";
+
+const DUREE_INACTIVITE_MS = 14 * 24 * 60 * 60 * 1000; // 2 semaines
 
 export async function createTable() {
   await SessionStockModel.createTable();
   await MouvementStockModel.createTable();
+  await ProduitActifModel.createTable();
   try {
     await ProduitModel.orm.run("ALTER TABLE produits ADD COLUMN stock_actuel REAL NOT NULL DEFAULT 0");
   } catch {
@@ -137,6 +140,7 @@ export async function ajouterMouvement(data: {
     : Math.max(0, stockActuel - data.quantite);
 
   await ProduitModel.update(data.produit_id, { stock_actuel: nouveauStock });
+  if (data.type === "reapprovisionnement") await marquerProduitActif(data.produit_id);
 
   return await MouvementStockModel.create({
     id: generateUUID(),
@@ -170,6 +174,7 @@ export async function modifierMouvement(data: {
       ? stockSansAncienMouvement + data.quantite
       : Math.max(0, stockSansAncienMouvement - data.quantite);
     await ProduitModel.update(mouvement.produit_id, { stock_actuel: nouveauStock });
+    if (mouvement.type === "reapprovisionnement") await marquerProduitActif(mouvement.produit_id);
   }
 
   return await MouvementStockModel.update(data.id, {
@@ -229,4 +234,37 @@ export function produitsDejaSuivis(mouvements: MouvementStock[]): Set<string> {
     if (TYPES_MOUVEMENT_SUIVI.includes(m.type)) suivis.add(m.produit_id);
   }
   return suivis;
+}
+
+/** Marque un produit comme réapprovisionné récemment (voir `ProduitActif`). */
+export async function marquerProduitActif(produit_id: string): Promise<void> {
+  const derniere_activite = new Date().toISOString();
+  const existant = await ProduitActifModel.findById(produit_id);
+  if (existant) {
+    await ProduitActifModel.update(produit_id, { derniere_activite });
+  } else {
+    await ProduitActifModel.create({ id: produit_id, derniere_activite });
+  }
+}
+
+export async function getProduitsActifs(): Promise<ProduitActif[]> {
+  return await ProduitActifModel.findAll();
+}
+
+/**
+ * Retire de la liste des "produits actifs" ceux qui n'ont pas été
+ * réapprovisionnés depuis 2 semaines. Appelé à l'ouverture de l'app et par
+ * la tâche en arrière-plan `purge-produits-inactifs` (`src/lib/backgroundTasks.ts`).
+ */
+export async function purgerProduitsInactifs(): Promise<number> {
+  const seuil = Date.now() - DUREE_INACTIVITE_MS;
+  const actifs = await ProduitActifModel.findAll();
+  let purges = 0;
+  for (const actif of actifs) {
+    if (new Date(actif.derniere_activite).getTime() < seuil) {
+      await ProduitActifModel.delete(actif.id);
+      purges++;
+    }
+  }
+  return purges;
 }

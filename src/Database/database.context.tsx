@@ -2,7 +2,7 @@ import { QueryForTable } from "../../SimpleORM";
 import * as Caisse from "./caisse";
 import * as Categories from "./categories";
 import * as CommandeDb from "./commande";
-import { CategoriePerte, Categorie, Commande, Etablissement, LigneCommande, MouvementCaisse, MouvementStock, Produit, SessionCaisse, SessionStock, TypeActivite, TypeMouvementStock, Utilisateur } from "./db";
+import { CategoriePerte, Categorie, Commande, Etablissement, LigneCommande, MouvementCaisse, MouvementStock, Produit, ProduitActif, SessionCaisse, SessionStock, TypeActivite, TypeMouvementStock, Utilisateur } from "./db";
 import * as EtablissementDb from "./etablissement";
 import * as Produits from "./produits";
 import * as Stock from "./stock";
@@ -63,6 +63,7 @@ interface DatabaseContextType {
   supprimerMouvementStock: (id: string) => Promise<void>;
   modifierSeuilAlerteProduit: (produit_id: string, seuil_alerte: number | null) => Promise<void>;
   modifierSeuilAlerteCategorie: (categorie_id: string, seuil_alerte: number | null) => Promise<void>;
+  produitsActifsQuery: QueryForTable<ProduitActif> | null;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -113,7 +114,8 @@ type TableLocale =
   | "commandes"
   | "lignesCommande"
   | "mouvementsStock"
-  | "sessionsStock";
+  | "sessionsStock"
+  | "produitsActifs";
 
 const TOUTES_LES_TABLES: readonly TableLocale[] = [
   "categories",
@@ -126,6 +128,7 @@ const TOUTES_LES_TABLES: readonly TableLocale[] = [
   "lignesCommande",
   "mouvementsStock",
   "sessionsStock",
+  "produitsActifs",
 ];
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
@@ -139,6 +142,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [lignesCommandeQuery, setLignesCommandeQuery] = useState<QueryForTable<LigneCommande> | null>(null);
   const [mouvementsStockQuery, setMouvementsStockQuery] = useState<QueryForTable<MouvementStock> | null>(null);
   const [sessionsStockQuery, setSessionsStockQuery] = useState<QueryForTable<SessionStock> | null>(null);
+  const [produitsActifsQuery, setProduitsActifsQuery] = useState<QueryForTable<ProduitActif> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<DatabaseError | null>(null);
 
@@ -180,6 +184,8 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
             return setMouvementsStockQuery(new QueryForTable<MouvementStock>(await Stock.getAllMouvements()));
           case "sessionsStock":
             return setSessionsStockQuery(new QueryForTable<SessionStock>(await Stock.getAllSessions()));
+          case "produitsActifs":
+            return setProduitsActifsQuery(new QueryForTable<ProduitActif>(await Stock.getProduitsActifs()));
         }
       }));
     } catch (error) {
@@ -197,6 +203,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       await Caisse.createTable();
       await CommandeDb.createTable();
       await Stock.createTable();
+      await Stock.purgerProduitsInactifs();
       clearError();
       await refreshLocalData();
     } catch (error) {
@@ -526,6 +533,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     supprimerMouvementStock,
     modifierSeuilAlerteProduit,
     modifierSeuilAlerteCategorie,
+    produitsActifsQuery,
   }), [
     categoriesQuery,
     produitsQuery,
@@ -565,6 +573,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     supprimerMouvementStock,
     modifierSeuilAlerteProduit,
     modifierSeuilAlerteCategorie,
+    produitsActifsQuery,
   ]);
 
   return (
