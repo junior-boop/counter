@@ -150,28 +150,33 @@ export default function CaisseScreen() {
                         )}
 
                         {sessionsFermees.length > 0 && (
-                            <View style={{ gap: 8 }}>
-                                {sessionsFermees.map((s) => (
-                                    <TouchableOpacity
-                                        key={s.id}
-                                        onPress={() => router.push({ pathname: "/session/[id]", params: { id: s.id } })}
-                                        style={{ paddingVertical: theme.internal_padding_2, paddingHorizontal: theme.internal_padding, backgroundColor: "white", borderRadius: theme.internal_radius }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two }}>session du {s.date_fermeture ? formaterDateRelative(s.date_fermeture) : ""}</Text>
-                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: theme.internal_padding_2 }}>
-                                            <View>
-                                                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Ouverture : {formaterMontant(s.montant_ouverture)}</Text>
-                                                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Fermeture : {formaterMontant(s.montant_fermeture ?? 0)}</Text>
+                            <View>
+                                <View style={{ marginTop: theme.size_four, marginBottom: theme.size_one, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Text style={{ fontSize: theme.size_two, color: "#838383" }}>Sessions précédentes</Text>
+                                </View>
+                                <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius }}>
+                                    {sessionsFermees.map((s) => (
+                                        <TouchableOpacity
+                                            key={s.id}
+                                            onPress={() => router.push({ pathname: "/session/[id]", params: { id: s.id } })}
+                                            style={{ paddingVertical: theme.internal_padding_2, paddingHorizontal: theme.internal_padding, backgroundColor: "white", borderRadius: theme.internal_radius_2 }}
+                                        >
+                                            <Text style={{ fontSize: theme.size_two }}>session du {s.date_fermeture ? formaterDateRelative(s.date_fermeture) : ""}</Text>
+                                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: theme.internal_padding_2 }}>
+                                                <View>
+                                                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Ouverture : {formaterMontant(s.montant_ouverture)}</Text>
+                                                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Fermeture : {formaterMontant(s.montant_fermeture ?? 0)}</Text>
+                                                </View>
+                                                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                                    <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: (s.ecart ?? 0) === 0 ? "#0f86e7" : "#e74c3c" }}>
+                                                        {formaterMontant(s.ecart ?? 0)}
+                                                    </Text>
+                                                    <ChevronRight color="black" size={18} strokeWidth={1} />
+                                                </View>
                                             </View>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                                <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: (s.ecart ?? 0) === 0 ? "#0f86e7" : "#e74c3c" }}>
-                                                    {formaterMontant(s.ecart ?? 0)}
-                                                </Text>
-                                                <ChevronRight color="black" size={18} strokeWidth={1} />
-                                            </View>
-                                        </View>
-                                    </TouchableOpacity>
-                                ))}
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
                             </View>
                         )}
                     </View>

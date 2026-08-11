@@ -27,3 +27,21 @@ export async function notifierOuvertureSessionCaisse(montant: number) {
     trigger: null,
   });
 }
+
+export async function notifierStockBas(nomProduit: string, stockActuel: number, seuil: number) {
+  const { status } = await Notifications.getPermissionsAsync();
+  let finalStatus = status;
+  if (status !== "granted") {
+    const { status: newStatus } = await Notifications.requestPermissionsAsync();
+    finalStatus = newStatus;
+  }
+  if (finalStatus !== "granted") return;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Stock bas",
+      body: `${nomProduit} : il reste ${stockActuel} (seuil d'alerte : ${seuil}).`,
+    },
+    trigger: null,
+  });
+}

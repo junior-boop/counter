@@ -83,7 +83,7 @@ export function CurrentOrderCard() {
 
                 <BottomSheet visible={modalVisible} onClose={closeModal}>
                     <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Nouvelle session</Text>
-                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Enregistrez le montant présent en caisse pour ouvrir une nouvelle session.</Text>
+                    <Text style={{ fontSize: theme.size_one, opacity: 0.6, marginBottom: theme.internal_padding }}>Enregistrez le montant présent en caisse pour ouvrir une nouvelle session.</Text>
 
                     {etablissement?.type === "les_deux" && (
                         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -111,7 +111,7 @@ export function CurrentOrderCard() {
                         placeholder="Montant d'ouverture (XAF)"
                         placeholderTextColor={"#aaaaaa"}
                         keyboardType="numeric"
-                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
+                        style={{ marginBottom: theme.internal_padding_2, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
                     />
                     <TouchableOpacity
                         onPress={handleOuvrir}

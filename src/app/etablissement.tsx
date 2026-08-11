@@ -6,7 +6,7 @@ import * as EtablissementDb from "@/Database/etablissement";
 import { router } from "expo-router";
 import { ArrowLeft, Check } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, ScrollView, Switch, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import theme from "../constants/constant-style";
 
@@ -21,28 +21,24 @@ export default function EtablissementScreen() {
     const { showError, showSuccess } = useAlert();
     const [nom, setNom] = useState("");
     const [type, setType] = useState<TypeEtablissement>("les_deux");
-    const [commandeTempsReelActive, setCommandeTempsReelActive] = useState<boolean>(Boolean(etablissement?.commande_temps_reel_active));
 
     useEffect(() => {
         if (etablissement) {
             setNom(etablissement.nom);
             setType(etablissement.type);
-            setCommandeTempsReelActive(etablissement.commande_temps_reel_active);
         }
     }, [etablissement]);
-
-    useEffect(() => {
-        setCommandeTempsReelActive(Boolean(etablissement?.commande_temps_reel_active));
-    }, [])
 
     const handleSave = async () => {
         if (!nom.trim()) {
             showError("Le nom de l'établissement est requis.");
             return;
         }
-        await updateEtablissement({ nom: nom.trim(), type, commande_temps_reel_active: commandeTempsReelActive });
+        // La prise de commande en temps réel n'est plus une option : elle est
+        // toujours active, la colonne n'est conservée que pour compatibilité.
+        await updateEtablissement({ nom: nom.trim(), type, commande_temps_reel_active: true });
         const fresh = await EtablissementDb.get();
-        if (!fresh || Boolean(fresh.commande_temps_reel_active) !== commandeTempsReelActive) {
+        if (!fresh) {
             showError("L'enregistrement a échoué en base de données (vérifiez la console Metro pour le détail).");
             return;
         }
@@ -93,18 +89,10 @@ export default function EtablissementScreen() {
                                 })}
                             </View>
 
-                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "white", borderRadius: theme.internal_radius, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding }}>
-                                <View style={{ flex: 1, paddingRight: theme.internal_padding_2 }}>
-                                    <Text style={{ fontSize: theme.size_two }}>Prise de commande en temps réel</Text>
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Fonctionnalité en test, réservée aux forfaits supérieurs.</Text>
-                                </View>
-                                <Switch value={commandeTempsReelActive} onValueChange={setCommandeTempsReelActive} />
-                            </View>
-
                             <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding }}>
                                 <Text style={{ fontSize: theme.size_one, opacity: 0.6, lineHeight: theme.size_one * 1.5 }}>
                                     <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>À quoi sert cette page ? </Text> {"\n"}
-                                    Ces informations décrivent votre établissement et sont utilisées dans toute l'application. Le nom apparaît sur les écrans consultés par votre équipe. Le type d'activité détermine les catégories de produits proposées dans la gestion des activités : un Snack-Bar n'a pas les mêmes catégories qu'un Café/Restaurant, et "Les deux" active l'ensemble des catégories. L'option "Prise de commande en temps réel" est une fonctionnalité expérimentale en test, activable ici uniquement à des fins de test avant d'être réservée aux forfaits supérieurs. Vous pouvez modifier ces réglages à tout moment depuis les Préférences.
+                                    Ces informations décrivent votre établissement et sont utilisées dans toute l'application. Le nom apparaît sur les écrans consultés par votre équipe. Le type d'activité détermine les catégories de produits proposées dans la gestion des activités : un Snack-Bar n'a pas les mêmes catégories qu'un Café/Restaurant, et "Les deux" active l'ensemble des catégories. Vous pouvez modifier ces réglages à tout moment depuis les Préférences.
                                 </Text>
                             </View>
 

@@ -7,7 +7,7 @@ import * as EtablissementDb from "./etablissement";
 import * as Produits from "./produits";
 import * as Stock from "./stock";
 import * as Utilisateurs from "./utilisateurs";
-import { notifierOuvertureSessionCaisse } from "../lib/notifications";
+import { notifierOuvertureSessionCaisse, notifierStockBas } from "../lib/notifications";
 import React, {
   createContext,
   ReactNode,
@@ -66,6 +66,35 @@ interface DatabaseContextType {
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
+
+/**
+ * Compare le stock d'avant-mutation (lu en mémoire, donc forcément juste avant
+ * l'écriture) au stock d'après (relu en base, car l'état React n'est pas encore
+ * à jour juste après refreshLocalData). Ne notifie que le franchissement du
+ * seuil vers le bas, jamais un produit déjà bas — sinon chaque mouvement sur un
+ * produit en rupture spammerait une notification.
+ */
+async function verifierSeuilsFranchis(
+  produitIds: string[],
+  stockAvant: Map<string, number | null | undefined>,
+  categoriesQuery: QueryForTable<Categorie> | null
+) {
+  const uniqueIds = Array.from(new Set(produitIds));
+  if (uniqueIds.length === 0) return;
+  const produitsApres = await Produits.getall();
+  for (const id of uniqueIds) {
+    const produit = produitsApres.find((p) => p.id === id);
+    if (!produit) continue;
+    const categorie = categoriesQuery?.findById(produit.categorie_id) ?? null;
+    const seuil = Stock.seuilEffectif(produit, categorie);
+    if (seuil === null) continue;
+    const avant = stockAvant.get(id);
+    const etaitBasAvant = avant != null && avant <= seuil;
+    if (!etaitBasAvant && Stock.estStockBas(produit, categorie)) {
+      notifierStockBas(produit.nom, produit.stock_actuel ?? 0, seuil);
+    }
+  }
+}
 
 /**
  * Chaque mutation déclare les tables qu'elle touche. Avant, la moindre écriture
@@ -339,24 +368,30 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   const passerCommande = useCallback(async (data: { session_id: string; utilisateur_id: string; lignes: { produit: Produit; quantite: number }[] }) => {
     clearError();
+    const produitIds = data.lignes.map((l) => l.produit.id);
+    const stockAvant = new Map(produitIds.map((id) => [id, produitsQuery?.findById(id)?.stock_actuel]));
     try {
       const result = await CommandeDb.passerCommande(data);
       await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
       return result;
     } catch (error) {
       handleError(error, "passer une commande");
     }
-  }, [clearError, handleError, refreshLocalData]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
 
   const modifierCommande = useCallback(async (data: { commande_id: string; lignes: { produit: Produit; quantite: number }[] }) => {
     clearError();
+    const produitIds = data.lignes.map((l) => l.produit.id);
+    const stockAvant = new Map(produitIds.map((id) => [id, produitsQuery?.findById(id)?.stock_actuel]));
     try {
       await CommandeDb.modifierCommande(data);
       await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
     } catch (error) {
       handleError(error, "modification de la commande");
     }
-  }, [clearError, handleError, refreshLocalData]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
 
   const supprimerCommande = useCallback(async (commande_id: string) => {
     clearError();
@@ -370,9 +405,12 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   const ouvrirSessionStock = useCallback(async (data: { type_activite: TypeActivite; utilisateur_ouverture_id: string; comptages: { produit_id: string; quantite: number }[] }) => {
     clearError();
+    const produitIds = data.comptages.map((c) => c.produit_id);
+    const stockAvant = new Map(produitIds.map((id) => [id, produitsQuery?.findById(id)?.stock_actuel]));
     try {
       const result = await Stock.ouvrirSession(data);
       await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
       return result;
     } catch (error) {
       handleError(error, "ouverture de l'inventaire");
@@ -380,29 +418,34 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       // Sans ça, un échec d'écriture silencieux se présentait comme un succès.
       throw error;
     }
-  }, [clearError, handleError, refreshLocalData]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
 
   const fermerSessionStock = useCallback(async (data: { id: string; utilisateur_fermeture_id: string; comptages: { produit_id: string; quantite: number }[] }) => {
     clearError();
+    const produitIds = data.comptages.map((c) => c.produit_id);
+    const stockAvant = new Map(produitIds.map((id) => [id, produitsQuery?.findById(id)?.stock_actuel]));
     try {
       await Stock.fermerSession(data);
       await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
     } catch (error) {
       handleError(error, "fermeture de l'inventaire");
       throw error;
     }
-  }, [clearError, handleError, refreshLocalData]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
 
   const ajouterMouvementStock = useCallback(async (data: { session_id: string; produit_id: string; type: TypeMouvementStock; quantite: number; categorie_perte?: CategoriePerte; motif?: string; utilisateur_id: string }) => {
     clearError();
+    const stockAvant = new Map([[data.produit_id, produitsQuery?.findById(data.produit_id)?.stock_actuel]]);
     try {
       const result = await Stock.ajouterMouvement(data);
       await refreshLocalData(["mouvementsStock", "produits"]);
+      verifierSeuilsFranchis([data.produit_id], stockAvant, categoriesQuery);
       return result;
     } catch (error) {
       handleError(error, "enregistrement d'un mouvement de stock");
     }
-  }, [clearError, handleError, refreshLocalData]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
 
   const modifierSeuilAlerteProduit = useCallback(async (produit_id: string, seuil_alerte: number | null) => {
     clearError();

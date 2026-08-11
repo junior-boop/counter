@@ -212,3 +212,21 @@ export function estStockBas(produit: Produit, categorie: Categorie | null): bool
   const seuil = seuilEffectif(produit, categorie);
   return seuil != null && (produit.stock_actuel ?? 0) <= seuil;
 }
+
+const TYPES_MOUVEMENT_SUIVI: readonly TypeMouvementStock[] = ["reapprovisionnement", "inventaire_ouverture", "inventaire_fermeture"];
+
+/**
+ * Un produit est "suivi" dès qu'il a déjà été compté en inventaire ou
+ * réapprovisionné au moins une fois, tous historiques confondus. Signal
+ * indépendant de stock_actuel (initialisé à 0 dès la création du produit,
+ * donc jamais null — inutilisable pour distinguer "jamais suivi" de "à 0")
+ * et de la session en cours (contrairement à l'éligibilité de recomptage
+ * utilisée en fermeture d'inventaire, volontairement scopée à la session).
+ */
+export function produitsDejaSuivis(mouvements: MouvementStock[]): Set<string> {
+  const suivis = new Set<string>();
+  for (const m of mouvements) {
+    if (TYPES_MOUVEMENT_SUIVI.includes(m.type)) suivis.add(m.produit_id);
+  }
+  return suivis;
+}

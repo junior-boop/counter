@@ -10,14 +10,14 @@ import { formaterMontant } from "@/lib/currency";
 import { formaterDateRelative, formaterHeure } from "@/lib/date";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { ArrowDownCircle, ArrowUpCircle, ChevronDown, ChevronRight, Lock, Minus, Pencil, Plus, ShoppingCart, Trash2, X } from "lucide-react-native";
-import { useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
 export default function SessionDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { etablissement, sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, modifierMouvementCaisse, supprimerMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
+    const { sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, modifierMouvementCaisse, supprimerMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
     const { session: utilisateur } = useAuth();
     const { showError, confirm } = useAlert();
 
@@ -52,27 +52,6 @@ export default function SessionDetailScreen() {
 
     const categoriesActivite = session ? (categoriesQuery?.findBy("type", session.type_activite) ?? []) : [];
 
-    const totalPanier = Object.entries(panier).reduce((sum, [produitId, quantite]) => {
-        const produit = produitsQuery?.findById(produitId);
-        return sum + (produit ? produit.prix * quantite : 0);
-    }, 0);
-
-    const nombreArticlesPanier = Object.values(panier).reduce((sum, q) => sum + q, 0);
-
-    const articlesParCategorie = (produits: Produit[]) =>
-        produits.reduce((sum, p) => sum + (panier[p.id] ?? 0), 0);
-
-    const changerQuantite = (produitId: string, delta: number) => {
-        setPanier((prev) => {
-            const quantite = (prev[produitId] ?? 0) + delta;
-            if (quantite <= 0) {
-                const { [produitId]: _omit, ...rest } = prev;
-                return rest;
-            }
-            return { ...prev, [produitId]: quantite };
-        });
-    };
-
     const closeCommandeModal = () => {
         setCommandeModalVisible(false);
         setPanier({});
@@ -80,14 +59,8 @@ export default function SessionDetailScreen() {
         setCommandeEnEditionId(null);
     };
 
-    const handlePasserCommande = async () => {
+    const handlePasserCommande = async (lignes: { produit: Produit; quantite: number }[]) => {
         if (!session || !utilisateur || isSubmitting) return;
-        const lignes = Object.entries(panier)
-            .map(([produitId, quantite]) => {
-                const produit = produitsQuery?.findById(produitId);
-                return produit ? { produit, quantite } : null;
-            })
-            .filter((l): l is { produit: Produit; quantite: number } => l !== null);
         if (lignes.length === 0) {
             showError("Ajoutez au moins un produit à la commande.");
             return;
@@ -244,7 +217,7 @@ export default function SessionDetailScreen() {
                                 )}
                             </View>
 
-                            {session.statut === "ouverte" && etablissement?.commande_temps_reel_active && (
+                            {session.statut === "ouverte" && (
                                 <TouchableOpacity
                                     onPress={() => setCommandeModalVisible(true)}
                                     style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius, padding: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: theme.internal_padding_2 }}
@@ -391,114 +364,16 @@ export default function SessionDetailScreen() {
             </BottomSheet>
 
             {/** Modal pour passer une commande */}
-            <Modal visible={commandeModalVisible} animationType="slide" onRequestClose={closeCommandeModal}>
-                <SafeAreaView style={{ flex: 1 }}>
-                    <View style={{ height: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
-                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{commandeEnEditionId ? "Modifier la commande" : "Nouvelle commande"}</Text>
-                        <TouchableOpacity onPress={closeCommandeModal}>
-                            <X size={20} color={"#0f86e7"} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <Container style={{ paddingBottom: theme.internal_padding }}>
-                        <View style={{ gap: 3, borderRadius: theme.internal_radius, overflow: 'hidden' }}>
-                            {nombreArticlesPanier === 0 ? (
-                                <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit sélectionné.</Text>
-                            ) : (
-                                Object.entries(panier).map(([produitId, quantite]) => {
-                                    const produit = produitsQuery?.findById(produitId);
-                                    if (!produit || quantite <= 0) return null;
-                                    return (
-                                        <View key={produitId} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}>
-                                            <Text style={{ fontSize: theme.size_two }}>{quantite} × {produit.nom}</Text>
-                                            <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(produit.prix * quantite)}</Text>
-                                        </View>
-                                    );
-                                })
-                            )}
-                        </View>
-                    </Container>
-
-                    <ScrollView style={{ flex: 1 }}>
-                        <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: 8, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                            {categoriesActivite.length === 0 && (
-                                <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit configuré pour cette activité.</Text>
-                            )}
-                            {categoriesActivite.map((categorie) => {
-                                const isExpanded = expandedCategorie === categorie.id;
-                                const produits = (produitsQuery?.findBy("categorie_id", categorie.id) ?? [])
-                                    .slice()
-                                    .sort((a, b) => a.nom.localeCompare(b.nom));
-                                return (
-                                    <View key={categorie.id} style={{ backgroundColor: "white" }}>
-                                        <TouchableOpacity
-                                            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                                            onPress={() => setExpandedCategorie(isExpanded ? null : categorie.id)}
-                                        >
-                                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
-                                                {/* Le panier reste visible même catégorie repliée : sinon on
-                                                    ne sait plus où sont les articles déjà sélectionnés. */}
-                                                {articlesParCategorie(produits) > 0 && (
-                                                    <Text style={{ fontSize: theme.size_one, color: "white", backgroundColor: "#0f86e7", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1, overflow: "hidden" }}>
-                                                        {articlesParCategorie(produits)}
-                                                    </Text>
-                                                )}
-                                                {isExpanded
-                                                    ? <ChevronDown color="black" size={20} strokeWidth={1} />
-                                                    : <ChevronRight color="black" size={20} strokeWidth={1} />}
-                                            </View>
-                                        </TouchableOpacity>
-
-                                        {/* La liste était rendue même repliée : tout le catalogue de
-                                            toutes les catégories montait à l'ouverture de la modale. */}
-                                        {isExpanded && (
-                                        <View style={{ marginTop: theme.internal_padding_2, gap: 3 }}>
-                                            {produits.map((produit) => {
-                                                const qte = panier[produit.id] ?? 0;
-                                                return (
-                                                    <View key={produit.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: theme.internal_padding_2 }}>
-                                                        <View style={{ flex: 1 }}>
-                                                            <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
-                                                            <Text style={{ fontSize: theme.size_one, color: "#777" }}>{formaterMontant(produit.prix)}</Text>
-                                                        </View>
-                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                                                            <TouchableOpacity onPress={() => changerQuantite(produit.id, -1)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" }}>
-                                                                <Minus size={16} color="#000" />
-                                                            </TouchableOpacity>
-                                                            <Text style={{ fontSize: theme.size_two, minWidth: 18, textAlign: "center" }}>{qte}</Text>
-                                                            <TouchableOpacity onPress={() => changerQuantite(produit.id, 1)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" }}>
-                                                                <Plus size={16} color="#000" />
-                                                            </TouchableOpacity>
-                                                        </View>
-                                                    </View>
-                                                );
-                                            })}
-                                        </View>
-                                        )}
-
-                                    </View>
-                                );
-                            })}
-                        </View>
-                    </ScrollView>
-
-                    <View style={{ paddingHorizontal: theme.screenPadding, paddingVertical: theme.internal_padding, gap: theme.internal_padding_2, borderTopWidth: 1, borderTopColor: "#e0e0e0", width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                            <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{nombreArticlesPanier} article{nombreArticlesPanier > 1 ? "s" : ""}</Text>
-                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{formaterMontant(totalPanier)}</Text>
-                        </View>
-                        <TouchableOpacity
-                            onPress={handlePasserCommande}
-                            disabled={nombreArticlesPanier === 0 || isSubmitting}
-                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: (nombreArticlesPanier === 0 || isSubmitting) ? 0.5 : 1 }}
-                        >
-                            <Text style={{ fontSize: theme.size_two, color: "white" }}>{commandeEnEditionId ? "Enregistrer les modifications" : "Valider la commande"}</Text>
-                        </TouchableOpacity>
-                    </View>
-                </SafeAreaView>
-            </Modal>
-
+            <CommandeModal
+                visible={commandeModalVisible}
+                enEdition={!!commandeEnEditionId}
+                panierInitial={panier}
+                categories={categoriesActivite}
+                produitsQuery={produitsQuery!}
+                isSubmitting={isSubmitting}
+                onClose={closeCommandeModal}
+                onSubmit={handlePasserCommande}
+            />
             {/** Modal d'actions sur une commande (modifier / supprimer) */}
             <BottomSheet visible={!!commandeActionMouvement} onClose={closeCommandeActionModal}>
                 <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(commandeActionMouvement?.montant ?? 0)}</Text>
@@ -551,3 +426,239 @@ export default function SessionDetailScreen() {
         </View>
     );
 }
+
+
+
+// ---------------------------------------------------------------------------
+// Modale de commande isolée : le panier vit ICI. Chaque appui sur +/− ne
+// re-rend donc que la modale, plus jamais l'écran de session derrière
+// (liste des mouvements, graphique de timeline, bottom sheets...).
+// ---------------------------------------------------------------------------
+const CommandeModal = memo(function CommandeModal({
+    visible,
+    enEdition,
+    panierInitial,
+    categories,
+    produitsQuery,
+    isSubmitting,
+    onClose,
+    onSubmit,
+}: {
+    visible: boolean;
+    enEdition: boolean;
+    panierInitial: Record<string, number> | null;
+    categories: CategorieLite[];
+    produitsQuery: ProduitsQuery;
+    isSubmitting: boolean;
+    onClose: () => void;
+    onSubmit: (lignes: LigneCommande[]) => void;
+}) {
+    const [panier, setPanier] = useState<Record<string, number>>({});
+
+    // Réinitialise le panier à chaque ouverture (vide pour une nouvelle
+    // commande, pré-rempli en mode modification).
+    useEffect(() => {
+        if (visible) setPanier(panierInitial ?? {});
+    }, [visible, panierInitial]);
+
+    // Catalogue trié UNE fois par changement de données, plus à chaque appui.
+    // Avant : findBy + slice + sort(localeCompare) pour chaque catégorie à
+    // chaque rendu — c'était la cause principale de la lenteur.
+    const catalogue = useMemo(
+        () =>
+            categories.map((categorie) => ({
+                categorie,
+                produits: (produitsQuery?.findBy("categorie_id", categorie.id) ?? [])
+                    .slice()
+                    .sort((a, b) => comparerNoms(a.nom, b.nom)),
+            })),
+        [categories, produitsQuery]
+    );
+
+    // Accès O(1) aux produits au lieu de findById répété dans les boucles.
+    const produitsById = useMemo(() => {
+        const map = new Map<string, Produit>();
+        catalogue.forEach(({ produits }) => produits.forEach((p) => map.set(p.id, p)));
+        return map;
+    }, [catalogue]);
+
+    const getProduit = useCallback(
+        (produitId: string) => produitsById.get(produitId) ?? produitsQuery?.findById(produitId) ?? null,
+        [produitsById, produitsQuery]
+    );
+
+    // Callback stable : indispensable pour que memo(ProduitRow) fonctionne.
+    const changerQuantite = useCallback((produitId: string, delta: number) => {
+        setPanier((prev) => {
+            const quantite = (prev[produitId] ?? 0) + delta;
+            if (quantite <= 0) {
+                const { [produitId]: _omit, ...rest } = prev;
+                return rest;
+            }
+            return { ...prev, [produitId]: quantite };
+        });
+    }, []);
+
+    // Total, nombre d'articles et badges par catégorie calculés en un seul
+    // passage sur le panier (au lieu de trois parcours séparés par rendu).
+    const { totalPanier, nombreArticlesPanier, comptesParCategorie } = useMemo(() => {
+        let total = 0;
+        let nombre = 0;
+        const comptes: Record<string, number> = {};
+        Object.entries(panier).forEach(([produitId, quantite]) => {
+            const produit = getProduit(produitId);
+            if (!produit) return;
+            total += produit.prix * quantite;
+            nombre += quantite;
+            comptes[produit.categorie_id] = (comptes[produit.categorie_id] ?? 0) + quantite;
+        });
+        return { totalPanier: total, nombreArticlesPanier: nombre, comptesParCategorie: comptes };
+    }, [panier, getProduit]);
+
+    const handleSubmit = useCallback(() => {
+        const lignes = Object.entries(panier)
+            .map(([produitId, quantite]) => {
+                const produit = getProduit(produitId);
+                return produit ? { produit, quantite } : null;
+            })
+            .filter((l): l is LigneCommande => l !== null);
+        onSubmit(lignes);
+    }, [panier, getProduit, onSubmit]);
+
+    return (
+        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+            <SafeAreaView style={{ flex: 1 }}>
+                <View style={{ height: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
+                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{enEdition ? "Modifier la commande" : "Nouvelle commande"}</Text>
+                    <TouchableOpacity onPress={onClose}>
+                        <X size={20} color={"#0f86e7"} />
+                    </TouchableOpacity>
+                </View>
+
+                <Container style={{ paddingBottom: theme.internal_padding }}>
+                    <View style={{ gap: 3, borderRadius: theme.internal_radius, overflow: "hidden" }}>
+                        {nombreArticlesPanier === 0 ? (
+                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit sélectionné.</Text>
+                        ) : (
+                            Object.entries(panier).map(([produitId, quantite]) => {
+                                const produit = getProduit(produitId);
+                                if (!produit || quantite <= 0) return null;
+                                return (
+                                    <View key={produitId} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}>
+                                        <Text style={{ fontSize: theme.size_two }}>{quantite} × {produit.nom}</Text>
+                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(produit.prix * quantite)}</Text>
+                                    </View>
+                                );
+                            })
+                        )}
+                    </View>
+                </Container>
+
+                <ScrollView style={{ flex: 1 }}>
+                    <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: 8, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
+                        {catalogue.length === 0 && (
+                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit configuré pour cette activité.</Text>
+                        )}
+                        {catalogue.map(({ categorie, produits }) => {
+                            const nbArticles = comptesParCategorie[categorie.id] ?? 0;
+                            return (
+                                <View key={categorie.id} style={{ backgroundColor: "white" }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                                            {nbArticles > 0 && (
+                                                <Text style={{ fontSize: theme.size_one, color: "white", backgroundColor: "#0f86e7", borderRadius: 12, overflow: "hidden", height: 24, textAlign: "center", aspectRatio: 1, textAlignVertical: 'center', paddingHorizontal: 6, fontWeight: "bold" }}>
+                                                    {nbArticles}
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </View>
+
+                                    <View style={{ marginTop: theme.internal_padding_2, gap: 3 }}>
+                                        {produits.map((produit) => (
+                                            <ProduitRow
+                                                key={produit.id}
+                                                produit={produit}
+                                                qte={panier[produit.id] ?? 0}
+                                                onChange={changerQuantite}
+                                            />
+                                        ))}
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </View>
+                </ScrollView>
+
+                <View style={{ paddingHorizontal: theme.screenPadding, paddingVertical: theme.internal_padding, gap: theme.internal_padding_2, borderTopWidth: 1, borderTopColor: "#e0e0e0", width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{nombreArticlesPanier} article{nombreArticlesPanier > 1 ? "s" : ""}</Text>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{formaterMontant(totalPanier)}</Text>
+                    </View>
+                    <TouchableOpacity
+                        onPress={handleSubmit}
+                        disabled={nombreArticlesPanier === 0 || isSubmitting}
+                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: (nombreArticlesPanier === 0 || isSubmitting) ? 0.5 : 1 }}
+                    >
+                        <Text style={{ fontSize: theme.size_two, color: "white" }}>{enEdition ? "Enregistrer les modifications" : "Valider la commande"}</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        </Modal>
+    );
+});
+
+
+// ---------------------------------------------------------------------------
+// Tri des noms : un Collator réutilisé est nettement plus rapide que
+// String.localeCompare appelé en boucle à chaque rendu (surtout sur Hermes).
+// ---------------------------------------------------------------------------
+const collator = typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+    ? new Intl.Collator("fr", { sensitivity: "base" })
+    : null;
+const comparerNoms = (a: string, b: string) => (collator ? collator.compare(a, b) : a.localeCompare(b));
+
+type LigneCommande = { produit: Produit; quantite: number };
+type CategorieLite = { id: string; nom: string };
+type ProduitsQuery = ReturnType<typeof useDatabase>["produitsQuery"];
+
+// ---------------------------------------------------------------------------
+// Ligne produit mémoïsée : un appui sur +/− ne re-rend que la ligne dont la
+// quantité change, plus jamais l'ensemble du catalogue.
+// ---------------------------------------------------------------------------
+const ProduitRow = memo(function ProduitRow({
+    produit,
+    qte,
+    onChange,
+}: {
+    produit: Produit;
+    qte: number;
+    onChange: (produitId: string, delta: number) => void;
+}) {
+    // Rupture : on bloque l'ajout, mais pas la réduction — une commande
+    // en cours de modification doit pouvoir retirer un article déjà pris.
+    const enRupture = (produit.stock_actuel ?? 0) <= 0;
+    return (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: theme.internal_padding_2, opacity: enRupture && qte === 0 ? 0.4 : 1 }}>
+            <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                <Text style={{ fontSize: theme.size_one, color: "#777" }}>
+                    {enRupture ? "Rupture de stock" : formaterMontant(produit.prix)}
+                </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <TouchableOpacity onPress={() => onChange(produit.id, -1)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" }}>
+                    <Minus size={16} color="#000" />
+                </TouchableOpacity>
+                <Text style={{ fontSize: theme.size_two, minWidth: 18, textAlign: "center" }}>{qte}</Text>
+                <TouchableOpacity
+                    onPress={() => onChange(produit.id, 1)}
+                    disabled={enRupture}
+                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center", opacity: enRupture ? 0.4 : 1 }}
+                >
+                    <Plus size={16} color="#000" />
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+});

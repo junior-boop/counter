@@ -22,6 +22,7 @@ export default function ActiviteScreen() {
     const { showError, confirm } = useAlert();
 
     const [expanded, setExpanded] = useState<string | null>(null);
+    const [categorieModalVisible, setCategorieModalVisible] = useState(false);
     const [nouvelleCategorie, setNouvelleCategorie] = useState("");
     const [nouveauProduit, setNouveauProduit] = useState({ nom: "", prix: "", quantite_par_lot: "" });
 
@@ -32,6 +33,16 @@ export default function ActiviteScreen() {
 
     const categories = categoriesQuery?.findBy("type", type) ?? [];
 
+    const openCategorieModal = () => {
+        setNouvelleCategorie("");
+        setCategorieModalVisible(true);
+    };
+
+    const closeCategorieModal = () => {
+        setCategorieModalVisible(false);
+        setNouvelleCategorie("");
+    };
+
     const handleAddCategorie = async () => {
         if (isSubmitting) return;
         if (!nouvelleCategorie.trim()) {
@@ -41,7 +52,7 @@ export default function ActiviteScreen() {
         setIsSubmitting(true);
         try {
             await addCategorie({ nom: nouvelleCategorie.trim(), type });
-            setNouvelleCategorie("");
+            closeCategorieModal();
         } finally {
             setIsSubmitting(false);
         }
@@ -136,29 +147,19 @@ export default function ActiviteScreen() {
         <SafeAreaView style={{ flex: 1 }}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
                 <View>
-                    <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
-                        <TouchableOpacity onPress={() => router.back()}>
-                            <ArrowLeft color="black" size={22} strokeWidth={1.5} />
-                        </TouchableOpacity>
-                        <Text style={{ fontSize: theme.size_three }}>{TITRES[type]}</Text>
-                    </View>
-                    <View style={{ paddingHorizontal: theme.screenPadding, borderBottomWidth: 1, borderBottomColor: "#e0e0e0", paddingBottom: theme.internal_padding }}>
-                        <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
-                            <TextInput
-                                value={nouvelleCategorie}
-                                onChangeText={setNouvelleCategorie}
-                                placeholder="Ajouter une catégorie"
-                                placeholderTextColor={"#aaaaaa"}
-                                style={{ flex: 1, backgroundColor: "transparent", borderRadius: theme.internal_radius_2, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, height: theme.touchTarget }}
-                            />
-                            <TouchableOpacity
-                                onPress={handleAddCategorie}
-                                disabled={isSubmitting}
-                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", width: theme.touchTarget, height: theme.touchTarget }}
-                            >
-                                <Plus color="white" size={20} strokeWidth={1.5} />
+                    <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                            <TouchableOpacity onPress={() => router.back()}>
+                                <ArrowLeft color="black" size={22} strokeWidth={1.5} />
                             </TouchableOpacity>
+                            <Text style={{ fontSize: theme.size_three }}>{TITRES[type]}</Text>
                         </View>
+                        <TouchableOpacity
+                            onPress={openCategorieModal}
+                            style={{ borderRadius: theme.internal_radius, alignItems: "center", justifyContent: "center", width: theme.touchTarget, height: theme.touchTarget }}
+                        >
+                            <Plus color="black" size={24} strokeWidth={1.5} />
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -261,62 +262,87 @@ export default function ActiviteScreen() {
                 {!isEditing ? (
                     <>
                         <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedProduit?.nom}</Text>
-                        <TouchableOpacity
-                            onPress={startEditing}
-                            disabled={isSubmitting}
-                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
-                        >
-                            <Pencil color="black" size={18} strokeWidth={1.5} />
-                            <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={handleDeleteProduit}
-                            disabled={isSubmitting}
-                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
-                        >
-                            <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
-                            <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
-                        </TouchableOpacity>
+                        <View style={{ gap: 3, marginTop: theme.internal_padding }}>
+                            <TouchableOpacity
+                                onPress={startEditing}
+                                disabled={isSubmitting}
+                                style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
+                            >
+                                <Pencil color="black" size={18} strokeWidth={1.5} />
+                                <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleDeleteProduit}
+                                disabled={isSubmitting}
+                                style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
+                            >
+                                <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
+                                <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
+                            </TouchableOpacity>
+                        </View>
                     </>
                 ) : (
                     <>
                         <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Modifier le produit</Text>
-                        <TextInput
-                            value={editForm.nom}
-                            onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
-                            placeholder="Produit"
-                            placeholderTextColor={"#aaaaaa"}
-                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                        />
-                        <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
+                        <View style={{ gap: 8, marginTop: theme.internal_padding }}>
                             <TextInput
-                                value={editForm.prix}
-                                onChangeText={(prix) => setEditForm((prev) => ({ ...prev, prix }))}
-                                placeholder="Prix"
+                                value={editForm.nom}
+                                onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
+                                placeholder="Produit"
                                 placeholderTextColor={"#aaaaaa"}
-                                keyboardType="numeric"
-                                style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
                             />
-                            {type === "bar" && (
+                            <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
                                 <TextInput
-                                    value={editForm.quantite_par_lot}
-                                    onChangeText={(quantite_par_lot) => setEditForm((prev) => ({ ...prev, quantite_par_lot }))}
-                                    placeholder="Qte/lot"
+                                    value={editForm.prix}
+                                    onChangeText={(prix) => setEditForm((prev) => ({ ...prev, prix }))}
+                                    placeholder="Prix"
                                     placeholderTextColor={"#aaaaaa"}
                                     keyboardType="numeric"
                                     style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
                                 />
-                            )}
+                                {type === "bar" && (
+                                    <TextInput
+                                        value={editForm.quantite_par_lot}
+                                        onChangeText={(quantite_par_lot) => setEditForm((prev) => ({ ...prev, quantite_par_lot }))}
+                                        placeholder="Qte/lot"
+                                        placeholderTextColor={"#aaaaaa"}
+                                        keyboardType="numeric"
+                                        style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                    />
+                                )}
+                            </View>
+                            <TouchableOpacity
+                                onPress={handleUpdateProduit}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                            >
+                                <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                            onPress={handleUpdateProduit}
-                            disabled={isSubmitting}
-                            style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                        >
-                            <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
-                        </TouchableOpacity>
                     </>
                 )}
+            </BottomSheet>
+
+            <BottomSheet visible={categorieModalVisible} onClose={closeCategorieModal}>
+                <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Ajouter une catégorie</Text>
+                <View style={{ gap: 8, marginTop: theme.internal_padding }}>
+                    <TextInput
+                        value={nouvelleCategorie}
+                        onChangeText={setNouvelleCategorie}
+                        placeholder="Nom de la catégorie"
+                        placeholderTextColor={"#aaaaaa"}
+                        autoFocus
+                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                    />
+                    <TouchableOpacity
+                        onPress={handleAddCategorie}
+                        disabled={isSubmitting}
+                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                    >
+                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Ajouter</Text>
+                    </TouchableOpacity>
+                </View>
             </BottomSheet>
         </SafeAreaView>
     );

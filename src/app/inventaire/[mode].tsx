@@ -344,9 +344,9 @@ export default function InventaireScreen() {
             </View>
 
             <BottomSheet visible={recapVisible} onClose={() => setRecapVisible(false)}>
-                <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{titre}</Text>
+                <Text style={{ fontSize: theme.size_three, fontWeight: "bold", marginBottom: theme.internal_padding }}>{titre}</Text>
 
-                <View style={{ gap: 4 }}>
+                <View style={{ gap: 4, marginBottom: theme.internal_padding_2 }}>
                     <Text style={{ fontSize: theme.size_two }}>
                         {produitsComptes.length} produit{produitsComptes.length > 1 ? "s" : ""} compté{produitsComptes.length > 1 ? "s" : ""} · {totalUnites} unité{totalUnites > 1 ? "s" : ""} au total
                     </Text>

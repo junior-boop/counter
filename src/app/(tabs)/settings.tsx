@@ -59,14 +59,6 @@ export default function SettingsScreen() {
                                     </View>
                                     <ChevronRight color="black" size={20} strokeWidth={1} />
                                 </TouchableOpacity>
-                                {
-                                    etablissement?.commande_temps_reel_active && (
-                                        <View style={[styles.button, { gap: 2 }]}>
-                                            <Text style={{ fontSize: theme.size_two, color: "#0f86e7" }}>Commande en temps réel activée</Text>
-                                        </View>
-                                    )
-
-                                }
                             </View>
                         </View>
 

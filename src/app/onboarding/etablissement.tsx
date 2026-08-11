@@ -26,7 +26,7 @@ export default function OnboardingEtablissementScreen() {
             showError("Le nom de l'établissement est requis.");
             return;
         }
-        await updateEtablissement({ nom: nom.trim(), type, commande_temps_reel_active: false });
+        await updateEtablissement({ nom: nom.trim(), type, commande_temps_reel_active: true });
         router.push("/onboarding/equipe");
     };
 
