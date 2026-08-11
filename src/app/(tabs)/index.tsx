@@ -1,19 +1,22 @@
+import { Container } from "@/components/Container";
+import { CurrentOrderCard } from "@/components/CurrentSession";
 import { Text } from "@/components/text";
 import Titre from "@/components/titre";
 import { useDatabase } from "@/Database/database.context";
-import { formaterMontant } from "@/lib/currency";
-import { formaterDateRelative } from "@/lib/date";
+import { estStockBas } from "@/Database/stock";
 import { getDate, getDay, getMonth } from "date-fns";
+import { BeerOff, TriangleAlert } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
 
 
 export default function HomeScreen() {
   const [dday, setDday] = useState<{ jour: string, date: number, mois: string }>({ jour: "-", date: 0, mois: "-" })
-  const { produitsQuery, sessionsCaisseQuery, mouvementsStockQuery } = useDatabase();
+  const { produitsQuery, categoriesQuery, sessionsCaisseQuery, mouvementsStockQuery } = useDatabase();
+  const insert = useSafeAreaInsets()
 
   const getParcelDate = () => {
     const date = new Date()
@@ -33,8 +36,14 @@ export default function HomeScreen() {
   const sessionCaisseOuverte = (sessionsCaisseQuery?.findAll() ?? []).find((s) => s.statut === "ouverte") ?? null;
 
   const produitsAlerte = (produitsQuery?.findAll() ?? []).filter(
-    (p) => p.stock_actuel != null && p.seuil_alerte != null && p.stock_actuel <= p.seuil_alerte
+    (p) => estStockBas(p, categoriesQuery?.findById(p.categorie_id) ?? null)
   );
+
+  // "Produits perdus" affichait le compteur d'alertes. Ce qui est réellement
+  // perdu, ce sont les quantités déclarées en perte, pas les stocks bas.
+  const quantitePerdue = (mouvementsStockQuery?.findAll() ?? [])
+    .filter((m) => m.type === "perte")
+    .reduce((somme, m) => somme + m.quantite, 0);
 
   const dernierEcart = (mouvementsStockQuery?.findAll() ?? [])
     .filter((m) => m.type === "inventaire_fermeture" && m.ecart != null && m.ecart !== 0)
@@ -42,59 +51,44 @@ export default function HomeScreen() {
   const produitEcart = dernierEcart ? produitsQuery?.findById(dernierEcart.produit_id) : null;
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <ScrollView>
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5", paddingTop: insert.top }}>
+      <View style={{ flex: 1, justifyContent: 'space-between' }}>
         <View style={{ height: theme.inner_height_screen * 0.2, width: "100%", flexDirection: "row", alignItems: "center" }}>
           <View style={{ paddingHorizontal: theme.screenPadding }}>
             <Text style={{ fontSize: 32, fontWeight: '600' }}>{dday.jour}</Text>
             <Text style={{ fontSize: 28, fontWeight: "400" }}>{dday?.date < 10 ? `0${dday?.date}` : dday?.date}, {dday?.mois}</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600" }}>Etablissement : Le Nom de l'Etablissement</Text>
           </View>
         </View>
 
-        <Titre titre="Caisse" />
-        <View style={{ paddingHorizontal: theme.screenPadding }}>
-          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
-            {sessionCaisseOuverte ? (
-              <>
-                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Session ouverte {formaterDateRelative(sessionCaisseOuverte.date_ouverture)}</Text>
-                <Text style={{ fontSize: theme.size_three, fontWeight: 'bold' }}>{formaterMontant(sessionCaisseOuverte.montant_ouverture)}</Text>
-              </>
-            ) : (
-              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucune session caisse en cours</Text>
-            )}
-          </View>
+        <View>
+          <Titre titre="Caisse" />
+          <Container style={{ paddingBottom: theme.internal_padding }}>
+            <CurrentOrderCard />
+          </Container>
+          <Container style={{ flexDirection: "row", gap: theme.internal_padding, paddingBottom: theme.internal_padding }}>
+            <View style={styles.bottom}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                <BeerOff size={28} strokeWidth={2} color={"black"} />
+                <Text style={{ fontSize: theme.size_two, opacity: 0.5, flex: 1, flexWrap: "wrap" }} numberOfLines={2}>Produits  {"\n"}perdus</Text>
+              </View>
+              <Text style={{ fontSize: 64, opacity: 0.5 }}>{quantitePerdue}</Text>
+            </View>
+            <View style={styles.bottom}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                <TriangleAlert size={28} strokeWidth={2} color={"black"} />
+                <Text style={{ fontSize: theme.size_two, opacity: 0.5, flex: 1, flexWrap: "wrap" }} numberOfLines={2}>Produits en {"\n"}alerte</Text>
+              </View>
+              <Text style={{ fontSize: 64, opacity: 0.5 }}>{produitsAlerte.length}</Text>
+            </View>
+          </Container>
         </View>
-
-        <Titre titre="Alertes stock" follow_btn={produitsAlerte.length > 0} follow_link="/stock" follow_name="Voir le stock" />
-        <View style={{ paddingHorizontal: theme.screenPadding }}>
-          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding }}>
-            {produitsAlerte.length > 0 ? (
-              <Text style={{ fontSize: theme.size_two, color: "#e74c3c", fontWeight: 'bold' }}>
-                {produitsAlerte.length} produit{produitsAlerte.length > 1 ? "s" : ""} sous le seuil d'alerte
-              </Text>
-            ) : (
-              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucune alerte de stock</Text>
-            )}
-          </View>
-        </View>
-
-        <Titre titre="Dernier écart détecté" />
-        <View style={{ paddingHorizontal: theme.screenPadding }}>
-          <View style={{ backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
-            {dernierEcart ? (
-              <>
-                <Text style={{ fontSize: theme.size_two, fontWeight: 'bold' }}>{produitEcart?.nom ?? "Produit supprimé"}</Text>
-                <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>
-                  Écart : {(dernierEcart.ecart ?? 0) > 0 ? "+" : ""}{dernierEcart.ecart}
-                </Text>
-                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterDateRelative(dernierEcart.date)}</Text>
-              </>
-            ) : (
-              <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun écart détecté récemment</Text>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }
+
+
+const styles = StyleSheet.create({
+  bottom: { flex: 1, aspectRatio: 1, backgroundColor: 'white', borderRadius: theme.internal_radius, padding: theme.internal_padding, justifyContent: "space-between" }
+})

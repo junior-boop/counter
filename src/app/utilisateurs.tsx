@@ -1,11 +1,12 @@
 import { useAlert } from "@/components/alert/alert.context";
+import { BottomSheet } from "@/components/bottom-sheet";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { Role, Utilisateur } from "@/Database/db";
 import { router } from "expo-router";
 import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react-native";
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import theme from "../constants/constant-style";
 
@@ -152,61 +153,54 @@ export default function UtilisateursScreen() {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <Modal visible={selectedUtilisateur !== null} transparent animationType="slide" onRequestClose={closeSheet}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
-                    <View style={{ flex: 1, position: 'relative', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={closeSheet} />
-                        <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth }}>
-                            {!isEditing ? (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedUtilisateur?.nom}</Text>
-                                    <TouchableOpacity
-                                        onPress={startEditing}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
-                                    >
-                                        <Pencil color="black" size={18} strokeWidth={1.5} />
-                                        <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={handleDeleteUtilisateur}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
-                                    >
-                                        <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
-                                        <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
-                                    </TouchableOpacity>
-                                </>
-                            ) : (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Modifier l'utilisateur</Text>
-                                    <TextInput
-                                        value={editForm.nom}
-                                        onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
-                                        placeholder="Nom"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <TextInput
-                                        value={editForm.code}
-                                        onChangeText={(code) => setEditForm((prev) => ({ ...prev, code }))}
-                                        placeholder="Code (PIN)"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        keyboardType="number-pad"
-                                        maxLength={4}
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <RoleSelector value={editForm.role} onChange={(role) => setEditForm((prev) => ({ ...prev, role }))} />
-                                    <TouchableOpacity
-                                        onPress={handleUpdateUtilisateur}
-                                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
-                                    </TouchableOpacity>
-                                </>
-                            )}
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
+            <BottomSheet visible={selectedUtilisateur !== null} onClose={closeSheet}>
+                {!isEditing ? (
+                    <>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedUtilisateur?.nom}</Text>
+                        <TouchableOpacity
+                            onPress={startEditing}
+                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
+                        >
+                            <Pencil color="black" size={18} strokeWidth={1.5} />
+                            <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={handleDeleteUtilisateur}
+                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2 }}
+                        >
+                            <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
+                            <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Modifier l'utilisateur</Text>
+                        <TextInput
+                            value={editForm.nom}
+                            onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
+                            placeholder="Nom"
+                            placeholderTextColor={"#aaaaaa"}
+                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                        />
+                        <TextInput
+                            value={editForm.code}
+                            onChangeText={(code) => setEditForm((prev) => ({ ...prev, code }))}
+                            placeholder="Code (PIN)"
+                            placeholderTextColor={"#aaaaaa"}
+                            keyboardType="number-pad"
+                            maxLength={4}
+                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                        />
+                        <RoleSelector value={editForm.role} onChange={(role) => setEditForm((prev) => ({ ...prev, role }))} />
+                        <TouchableOpacity
+                            onPress={handleUpdateUtilisateur}
+                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                        >
+                            <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+            </BottomSheet>
         </SafeAreaView>
     );
 }

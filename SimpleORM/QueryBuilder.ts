@@ -33,9 +33,28 @@ interface StatsResult {
 type PredicateFunction<T> = (item: T) => boolean;
 type UpdateData<T> = Partial<Omit<T, "id">>;
 
+// Tableau vide partagé : évite d'allouer un [] à chaque findBy sans résultat.
+// Gelé pour que personne ne le remplisse par accident — il est partagé par
+// *toutes* les instances.
+const EMPTY: readonly never[] = Object.freeze([]);
+
+// En dev on gèle les tableaux mis en cache : ils sont désormais partagés entre
+// tous les appelants, donc un `.sort()` ou `.push()` en place corromprait le
+// cache de tout le monde. Mieux vaut planter bruyamment ici qu'en production.
+function protect<U>(array: U[]): U[] {
+  return __DEV__ ? (Object.freeze(array) as U[]) : array;
+}
+
 export class QueryForTable<T extends BaseEntity> {
   private dataMap: Map<string, T>;
   private lastQuery: T[] | null = null;
+  // Snapshot de findAll() : la Map ne change pas entre deux mutations, inutile
+  // de réallouer le tableau à chaque lecture (findAll était appelé en boucle
+  // pendant le rendu via where/findBy).
+  private allCache: T[] | null = null;
+  // Index secondaires construits à la demande : propriété -> valeur -> lignes.
+  // Rend findBy O(1) après le premier appel au lieu d'un scan complet.
+  private indexes = new Map<keyof T, Map<unknown, T[]>>();
 
   constructor(array: T[] = []) {
     this.dataMap = new Map(array.map((item) => [item.id, item]));
@@ -44,13 +63,18 @@ export class QueryForTable<T extends BaseEntity> {
   // Invalide le cache après toute mutation
   private invalidate(): void {
     this.lastQuery = null;
+    this.allCache = null;
+    this.indexes.clear();
   }
 
   // ---------- Lecture ----------
 
   findAll(): T[] {
-    this.lastQuery = Array.from(this.dataMap.values());
-    return this.lastQuery;
+    if (!this.allCache) {
+      this.allCache = protect(Array.from(this.dataMap.values()));
+    }
+    this.lastQuery = this.allCache;
+    return this.allCache;
   }
 
   getLastQuery(): T[] | null {
@@ -72,8 +96,26 @@ export class QueryForTable<T extends BaseEntity> {
     return this.findAll().filter(predicate);
   }
 
+  // Indexé : le premier appel sur une propriété construit le seau complet,
+  // les suivants sont de simples lookups. Le tableau retourné est partagé —
+  // copiez-le (`[...res]` / `.slice()`) avant tout tri ou mutation en place.
   findBy<K extends keyof T>(property: K, value: T[K]): T[] {
-    return this.where((item) => item[property] === value);
+    let index = this.indexes.get(property);
+    if (!index) {
+      index = new Map<unknown, T[]>();
+      for (const item of this.dataMap.values()) {
+        const key = item[property];
+        const bucket = index.get(key);
+        if (bucket) {
+          bucket.push(item);
+        } else {
+          index.set(key, [item]);
+        }
+      }
+      for (const [key, bucket] of index) index.set(key, protect(bucket));
+      this.indexes.set(property, index);
+    }
+    return index.get(value) ?? (EMPTY as unknown as T[]);
   }
 
   // Recherche avec regex.
@@ -336,7 +378,8 @@ export class QueryForTable<T extends BaseEntity> {
   // (sort(() => Math.random() - 0.5) est biaisé)
   sample(size: number): T[] {
     const all = this.findAll();
-    if (size >= all.length) return all;
+    // Copie systématique : findAll() renvoie désormais le cache partagé
+    if (size >= all.length) return [...all];
 
     const shuffled = [...all];
     for (let i = shuffled.length - 1; i > 0; i--) {

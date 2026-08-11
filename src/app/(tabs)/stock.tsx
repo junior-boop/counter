@@ -1,15 +1,18 @@
 import { useAuth } from "@/Auth/auth.context";
 import { useAlert } from "@/components/alert/alert.context";
+import { BottomSheet } from "@/components/bottom-sheet";
+import { Container } from "@/components/Container";
 import { StockTrendChart, StockTrendPoint } from "@/components/StockTrendChart";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { CategoriePerte, MouvementStock, Produit, TypeActivite, TypeMouvementStock } from "@/Database/db";
+import { estStockBas } from "@/Database/stock";
 import { formaterDateCourte, formaterDateRelative, jourLocal } from "@/lib/date";
 import { Temporal } from "@js-temporal/polyfill";
 import { router } from "expo-router";
-import { ArrowLeft, ChevronRight, PackagePlus, X } from "lucide-react-native";
+import { ArrowLeft, ChevronRight, PackagePlus, Pencil, X } from "lucide-react-native";
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
@@ -31,9 +34,9 @@ type ModalMode = "reappro" | "perte" | "seuil";
 type ListMode = "reappro" | "perte" | null;
 
 export default function StockScreen() {
-    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, ajouterMouvementStock, modifierSeuilAlerteProduit } = useDatabase();
+    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, sessionsCaisseQuery, ajouterMouvementStock, modifierMouvementStock, supprimerMouvementStock, ajouterMouvementCaisse, modifierSeuilAlerteProduit, modifierSeuilAlerteCategorie } = useDatabase();
     const { session } = useAuth();
-    const { showError } = useAlert();
+    const { showError, confirm } = useAlert();
     const insets = useSafeAreaInsets();
 
     const [activiteChoisie, setActiviteChoisie] = useState<TypeActivite | null>(null);
@@ -49,6 +52,13 @@ export default function StockScreen() {
     const [seuil, setSeuil] = useState("");
     const [lots, setLots] = useState("");
     const [unitesSupp, setUnitesSupp] = useState("");
+    const [reapproEffectue, setReapproEffectue] = useState(false);
+    const [sortieCaisseVisible, setSortieCaisseVisible] = useState(false);
+    const [montantSortie, setMontantSortie] = useState("");
+    const [mouvementEnEdition, setMouvementEnEdition] = useState<MouvementStock | null>(null);
+    const [editQuantite, setEditQuantite] = useState("");
+    const [categorieSeuilVisible, setCategorieSeuilVisible] = useState(false);
+    const [seuilCategorie, setSeuilCategorie] = useState("");
 
     const activite: TypeActivite | null = etablissement?.type === "les_deux" ? activiteChoisie : (etablissement?.type ?? null);
 
@@ -57,6 +67,16 @@ export default function StockScreen() {
     const sessionOuverte = sessionsActivite
         .filter((s) => s.statut === "ouverte")
         .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
+
+    const sessionsCaisseActivite = (activite ? sessionsCaisseQuery?.findBy("type_activite", activite) : []) ?? [];
+    const sessionCaisseOuverte = sessionsCaisseActivite
+        .filter((s) => s.statut === "ouverte")
+        .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
+
+    const mouvementsReapproSession = (sessionOuverte ? mouvementsStockQuery?.findBy("session_id", sessionOuverte.id) ?? [] : [])
+        .filter((m) => m.type === "reapprovisionnement")
+        .slice()
+        .sort((a, b) => b.date.localeCompare(a.date));
 
     const sommerQuantites = (mouvements: MouvementStock[], type: TypeMouvementStock) =>
         mouvements.filter((m) => m.type === type).reduce((somme, m) => somme + m.quantite, 0);
@@ -143,6 +163,30 @@ export default function StockScreen() {
         setSeuil(produit.seuil_alerte != null ? String(produit.seuil_alerte) : "");
     };
 
+    const categorieActuelle = categories.find((c) => c.id === categorieModalId) ?? null;
+
+    const openCategorieSeuil = () => {
+        if (!categorieActuelle) return;
+        setSeuilCategorie(categorieActuelle.seuil_alerte != null ? String(categorieActuelle.seuil_alerte) : "");
+        setCategorieSeuilVisible(true);
+    };
+
+    const handleSeuilCategorie = async () => {
+        if (isSubmitting || !categorieActuelle) return;
+        const s = seuilCategorie.trim() ? parseFloat(seuilCategorie) : null;
+        if (s !== null && (Number.isNaN(s) || s < 0)) {
+            showError("Le seuil d'alerte doit être positif.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await modifierSeuilAlerteCategorie(categorieActuelle.id, s);
+            setCategorieSeuilVisible(false);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const openOperationSheet = (produit: Produit, mode: "reappro" | "perte") => {
         if (!sessionOuverte) {
             showError("Ouvrez l'inventaire pour enregistrer des mouvements de stock.");
@@ -167,6 +211,32 @@ export default function StockScreen() {
 
     const closeOperationList = () => {
         setListMode(null);
+        if (!reapproEffectue) return;
+        setReapproEffectue(false);
+        if (!sessionCaisseOuverte) {
+            showError("Aucune session de caisse ouverte : la sortie n'a pas été enregistrée.");
+            return;
+        }
+        setMontantSortie("");
+        // Fermer une Modal et en présenter une autre dans le même commit fait
+        // écran noir / bloque le natif ("present while dismissing"). On laisse la
+        // première finir son animation de sortie avant d'ouvrir la seconde.
+        setTimeout(() => setSortieCaisseVisible(true), 350);
+    };
+
+    const closeSortieCaisse = () => {
+        setSortieCaisseVisible(false);
+        setMontantSortie("");
+    };
+
+    const openEditMouvement = (m: MouvementStock) => {
+        setMouvementEnEdition(m);
+        setEditQuantite(String(m.quantite));
+    };
+
+    const closeEditMouvement = () => {
+        setMouvementEnEdition(null);
+        setEditQuantite("");
     };
 
     const quantiteParLot = selectedProduit?.quantite_par_lot ?? null;
@@ -189,7 +259,53 @@ export default function StockScreen() {
         setIsSubmitting(true);
         try {
             await ajouterMouvementStock({ session_id: sessionOuverte.id, produit_id: selectedProduit.id, type: "reapprovisionnement", quantite: q, utilisateur_id: session.id });
+            setReapproEffectue(true);
             closeSheet();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleValiderSortieCaisse = async () => {
+        if (isSubmitting) return;
+        const montant = parseFloat(montantSortie);
+        if (!session || !sessionCaisseOuverte || Number.isNaN(montant) || montant <= 0) {
+            showError("Le montant doit être supérieur à 0.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await ajouterMouvementCaisse({ session_id: sessionCaisseOuverte.id, type: "sortie", montant, motif: "Réapprovisionnement stock", utilisateur_id: session.id });
+            closeSortieCaisse();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleModifierMouvement = async () => {
+        if (isSubmitting || !mouvementEnEdition) return;
+        const q = parseFloat(editQuantite);
+        if (Number.isNaN(q) || q <= 0) {
+            showError("La quantité doit être supérieure à 0.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await modifierMouvementStock({ id: mouvementEnEdition.id, quantite: q });
+            closeEditMouvement();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSupprimerMouvement = async () => {
+        if (isSubmitting || !mouvementEnEdition) return;
+        const ok = await confirm("Supprimer ce mouvement de réapprovisionnement ?", { confirmLabel: "Supprimer" });
+        if (!ok) return;
+        setIsSubmitting(true);
+        try {
+            await supprimerMouvementStock(mouvementEnEdition.id);
+            closeEditMouvement();
         } finally {
             setIsSubmitting(false);
         }
@@ -254,6 +370,123 @@ export default function StockScreen() {
             </View>
         );
     }
+
+    // Rendue soit en Modal (depuis l'écran), soit en superposition inline
+    // (depuis la Modal de liste) : deux Modals présentées simultanément ne
+    // s'empilent pas de façon fiable côté natif.
+    const feuilleProduit = (presentation: "modal" | "inline") => (
+                <BottomSheet visible={selectedProduit !== null} onClose={closeSheet} presentation={presentation}>
+                    {modalMode === "reappro" && (
+                        <>
+                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Réapprovisionner {selectedProduit?.nom}</Text>
+                            <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Stock actuel : {selectedProduit?.stock_actuel ?? 0}</Text>
+                            {quantiteParLot ? (
+                                <>
+                                    <Text style={{ fontSize: theme.size_two, opacity: 0.6, marginVertical: theme.internal_padding_2 }}>1 lot = {quantiteParLot} unités. Entrez un nombre de lots (ex: 2 ou 0.5) et/ou un complément en unités.</Text>
+                                    <View style={{ flexDirection: "row", gap: theme.internal_padding_2, marginBottom: theme.internal_padding_2 }}>
+                                        <TextInput
+                                            value={lots}
+                                            onChangeText={setLots}
+                                            placeholder="Nombre de lots"
+                                            placeholderTextColor={"#aaaaaa"}
+                                            keyboardType="decimal-pad"
+                                            style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                        />
+                                        <TextInput
+                                            value={unitesSupp}
+                                            onChangeText={setUnitesSupp}
+                                            placeholder="+ unités"
+                                            placeholderTextColor={"#aaaaaa"}
+                                            keyboardType="numeric"
+                                            style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                        />
+                                    </View>
+                                    {(lots.trim() !== "" || unitesSupp.trim() !== "") && !Number.isNaN(calculerQuantiteReappro()) && (
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Total : {calculerQuantiteReappro()} unités</Text>
+                                    )}
+                                </>
+                            ) : (
+                                <TextInput
+                                    value={quantite}
+                                    onChangeText={setQuantite}
+                                    placeholder="Quantité ajoutée"
+                                    placeholderTextColor={"#aaaaaa"}
+                                    keyboardType="numeric"
+                                    style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                />
+                            )}
+                            <TouchableOpacity
+                                onPress={handleReapprovisionner}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                            >
+                                <Text style={{ fontSize: theme.size_two, color: "white" }}>Valider</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    {modalMode === "perte" && (
+                        <>
+                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Enregistrer une perte — {selectedProduit?.nom}</Text>
+                            <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Stock actuel : {selectedProduit?.stock_actuel ?? 0}</Text>
+                            <TextInput
+                                value={quantite}
+                                onChangeText={setQuantite}
+                                placeholder="Quantité perdue"
+                                placeholderTextColor={"#aaaaaa"}
+                                keyboardType="numeric"
+                                style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                            />
+                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {CATEGORIES_PERTE.map((c) => (
+                                    <TouchableOpacity
+                                        key={c.value}
+                                        onPress={() => setCategoriePerte(c.value)}
+                                        style={{ backgroundColor: categoriePerte === c.value ? "#0f86e7" : "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}
+                                    >
+                                        <Text style={{ fontSize: theme.size_one, color: categoriePerte === c.value ? "white" : "black" }}>{c.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                            <TextInput
+                                value={motif}
+                                onChangeText={setMotif}
+                                placeholder="Motif (facultatif)"
+                                placeholderTextColor={"#aaaaaa"}
+                                style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                            />
+                            <TouchableOpacity
+                                onPress={handlePerte}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#e74c3c", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                            >
+                                <Text style={{ fontSize: theme.size_two, color: "white" }}>Valider</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    {modalMode === "seuil" && (
+                        <>
+                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold", marginBottom: theme.internal_padding }}>Seuil d'alerte — {selectedProduit?.nom}</Text>
+                            <TextInput
+                                value={seuil}
+                                onChangeText={setSeuil}
+                                placeholder="Seuil (laisser vide pour désactiver)"
+                                placeholderTextColor={"#aaaaaa"}
+                                keyboardType="numeric"
+                                style={{ marginBottom: theme.internal_padding_2, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                            />
+                            <TouchableOpacity
+                                onPress={handleSeuil}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                            >
+                                <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+                </BottomSheet>
+    );
 
     return (
         <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>
@@ -375,129 +608,65 @@ export default function StockScreen() {
                 </View>
             </ScrollView>
 
-            <Modal visible={selectedProduit !== null} transparent animationType="slide" onRequestClose={closeSheet}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
-                    <View style={{ flex: 1, position: "relative", justifyContent: "flex-end", alignItems: "center" }}>
-                        <TouchableOpacity style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={closeSheet} />
-                        <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth }}>
-                            {modalMode === "reappro" && (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Réapprovisionner {selectedProduit?.nom}</Text>
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Stock actuel : {selectedProduit?.stock_actuel ?? 0}</Text>
-                                    {quantiteParLot ? (
-                                        <>
-                                            <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>1 lot = {quantiteParLot} unités. Entrez un nombre de lots (ex: 2 ou 0.5) et/ou un complément en unités.</Text>
-                                            <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
-                                                <TextInput
-                                                    value={lots}
-                                                    onChangeText={setLots}
-                                                    placeholder="Nombre de lots"
-                                                    placeholderTextColor={"#aaaaaa"}
-                                                    keyboardType="decimal-pad"
-                                                    style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                                />
-                                                <TextInput
-                                                    value={unitesSupp}
-                                                    onChangeText={setUnitesSupp}
-                                                    placeholder="+ unités"
-                                                    placeholderTextColor={"#aaaaaa"}
-                                                    keyboardType="numeric"
-                                                    style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                                />
-                                            </View>
-                                            {(lots.trim() !== "" || unitesSupp.trim() !== "") && !Number.isNaN(calculerQuantiteReappro()) && (
-                                                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Total : {calculerQuantiteReappro()} unités</Text>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <TextInput
-                                            value={quantite}
-                                            onChangeText={setQuantite}
-                                            placeholder="Quantité ajoutée"
-                                            placeholderTextColor={"#aaaaaa"}
-                                            keyboardType="numeric"
-                                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                        />
-                                    )}
-                                    <TouchableOpacity
-                                        onPress={handleReapprovisionner}
-                                        disabled={isSubmitting}
-                                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Valider</Text>
-                                    </TouchableOpacity>
-                                </>
-                            )}
+            {listMode === null && feuilleProduit("modal")}
 
-                            {modalMode === "perte" && (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Enregistrer une perte — {selectedProduit?.nom}</Text>
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Stock actuel : {selectedProduit?.stock_actuel ?? 0}</Text>
-                                    <TextInput
-                                        value={quantite}
-                                        onChangeText={setQuantite}
-                                        placeholder="Quantité perdue"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        keyboardType="numeric"
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                                        {CATEGORIES_PERTE.map((c) => (
-                                            <TouchableOpacity
-                                                key={c.value}
-                                                onPress={() => setCategoriePerte(c.value)}
-                                                style={{ backgroundColor: categoriePerte === c.value ? "#0f86e7" : "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}
-                                            >
-                                                <Text style={{ fontSize: theme.size_one, color: categoriePerte === c.value ? "white" : "black" }}>{c.label}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                    <TextInput
-                                        value={motif}
-                                        onChangeText={setMotif}
-                                        placeholder="Motif (facultatif)"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <TouchableOpacity
-                                        onPress={handlePerte}
-                                        disabled={isSubmitting}
-                                        style={{ backgroundColor: "#e74c3c", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Valider</Text>
-                                    </TouchableOpacity>
-                                </>
-                            )}
+            <BottomSheet visible={sortieCaisseVisible} onClose={closeSortieCaisse}>
+                <Text style={{ fontSize: theme.size_three, fontWeight: "bold", marginBottom: theme.internal_padding_2 }}>Sortie de caisse</Text>
+                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Indiquez le montant sorti de la caisse pour ce réapprovisionnement.</Text>
+                <TextInput
+                    value={montantSortie}
+                    onChangeText={setMontantSortie}
+                    placeholder="Montant (XAF)"
+                    placeholderTextColor={"#aaaaaa"}
+                    keyboardType="numeric"
+                    autoFocus
+                    style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black", marginBottom: theme.internal_padding_2 }}
+                />
+                <TouchableOpacity
+                    onPress={handleValiderSortieCaisse}
+                    disabled={isSubmitting}
+                    style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer la sortie</Text>
+                </TouchableOpacity>
+            </BottomSheet>
 
-                            {modalMode === "seuil" && (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Seuil d'alerte — {selectedProduit?.nom}</Text>
-                                    <TextInput
-                                        value={seuil}
-                                        onChangeText={setSeuil}
-                                        placeholder="Seuil (laisser vide pour désactiver)"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        keyboardType="numeric"
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <TouchableOpacity
-                                        onPress={handleSeuil}
-                                        disabled={isSubmitting}
-                                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
-                                    </TouchableOpacity>
-                                </>
-                            )}
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
-
+            <BottomSheet visible={mouvementEnEdition !== null} onClose={closeEditMouvement}>
+                <Text style={{ fontSize: theme.size_three, fontWeight: "bold", marginBottom: theme.internal_padding_2 }}>
+                    Modifier — {produitsQuery?.findById(mouvementEnEdition?.produit_id ?? "")?.nom}
+                </Text>
+                <TextInput
+                    value={editQuantite}
+                    onChangeText={setEditQuantite}
+                    placeholder="Quantité"
+                    placeholderTextColor={"#aaaaaa"}
+                    keyboardType="numeric"
+                    autoFocus
+                    style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black", marginBottom: theme.internal_padding_2 }}
+                />
+                <TouchableOpacity
+                    onPress={handleModifierMouvement}
+                    disabled={isSubmitting}
+                    style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    onPress={handleSupprimerMouvement}
+                    disabled={isSubmitting}
+                    style={{ opacity: isSubmitting ? 0.5 : 1, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding_2 }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
+                </TouchableOpacity>
+            </BottomSheet>
 
             <Modal visible={listMode !== null} animationType="slide" onRequestClose={closeOperationList}>
-                <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: "#f5f5f5" }}>
-                    <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
+                {/* Le paddingTop est descendu d'un niveau : la feuille inline se
+                    positionne par rapport à la boîte de padding du parent, elle
+                    laissait sinon une bande claire sous la barre d'état. */}
+                <View style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
+                    <View style={{ flex: 1, paddingTop: insets.top }}>
+                    <View style={{ height: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
                         <TouchableOpacity onPress={closeOperationList}>
                             <ArrowLeft color="black" size={22} strokeWidth={1.5} />
                         </TouchableOpacity>
@@ -506,99 +675,160 @@ export default function StockScreen() {
                         </Text>
                         <View style={{ width: 22 }} />
                     </View>
-                    <ScrollView style={{ flex: 1 }}>
-                        <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                            {categories.map((categorie) => {
-                                const produits = (produitsQuery?.findBy("categorie_id", categorie.id) ?? []).slice().sort((a, b) => a.nom.localeCompare(b.nom));
-                                if (produits.length === 0) return null;
-                                return (
-                                    <View key={categorie.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
-                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{categorie.nom}</Text>
-                                        {produits.map((produit) => (
-                                            <TouchableOpacity
-                                                key={produit.id}
-                                                onPress={() => listMode && openOperationSheet(produit, listMode)}
-                                                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: theme.touchTarget }}
-                                            >
-                                                <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
-                                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                    <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{produit.stock_actuel ?? 0}</Text>
-                                                    <ChevronRight color="black" size={18} strokeWidth={1} />
-                                                </View>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                );
-                            })}
-                        </View>
-                    </ScrollView>
-                </View>
-            </Modal>
-
-            <Modal visible={categorieModalId !== null} transparent animationType="slide" onRequestClose={() => setCategorieModalId(null)}>
-                <View style={{ flex: 1, justifyContent: "flex-end" }}>
-                    <TouchableOpacity style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={() => setCategorieModalId(null)} />
-                    <View style={{ height: "85%", backgroundColor: "white", borderTopLeftRadius: theme.internal_radius, borderTopRightRadius: theme.internal_radius, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: theme.screenPadding, borderBottomWidth: 1, borderBottomColor: "#f5f5f5" }}>
-                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>
-                                {categories.find((c) => c.id === categorieModalId)?.nom}
-                            </Text>
-                            <TouchableOpacity onPress={() => setCategorieModalId(null)}>
-                                <X color="black" size={22} strokeWidth={1.5} />
-                            </TouchableOpacity>
-                        </View>
-                        <ScrollView style={{ flex: 1 }}>
-                            <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.screenPadding * 3 }}>
-                                {(produitsQuery?.findBy("categorie_id", categorieModalId ?? "") ?? [])
-                                    .slice()
-                                    .sort((a, b) => a.nom.localeCompare(b.nom))
-                                    .map((produit, index) => {
-                                        const stockActuel = produit.stock_actuel ?? 0;
-                                        const stockBas = produit.seuil_alerte != null && stockActuel <= produit.seuil_alerte;
-
-                                        if (index === 0) {
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom }}>
+                        <Container>
+                            <View style={{ paddingBottom: theme.internal_padding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
+                                {listMode === "reappro" && mouvementsReapproSession.length > 0 && (
+                                    <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
+                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Ajouts de cette session</Text>
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.6, marginBottom: 4 }}>Touchez une ligne pour corriger une erreur.</Text>
+                                        {mouvementsReapproSession.map((m) => {
+                                            const produit = produitsQuery?.findById(m.produit_id);
                                             return (
                                                 <TouchableOpacity
-                                                    key={produit.id}
-                                                    onPress={() => openSeuilSheet(produit)}
-                                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: theme.internal_padding }}
+                                                    key={m.id}
+                                                    onPress={() => openEditMouvement(m)}
+                                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: theme.touchTarget }}
                                                 >
-                                                    <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                                                    <Text style={{ fontSize: theme.size_two }}>{produit?.nom ?? "Produit"}</Text>
                                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                        {stockBas && (
-                                                            <View style={{ backgroundColor: "#fdecea", borderRadius: theme.internal_radius_2, paddingHorizontal: 6, paddingVertical: 2 }}>
-                                                                <Text style={{ fontSize: theme.size_one, color: "#e74c3c" }}>Stock bas</Text>
-                                                            </View>
-                                                        )}
-                                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: stockBas ? "#e74c3c" : undefined }}>{stockActuel}</Text>
+                                                        <Text style={{ fontSize: theme.size_two, color: "#0f86e7" }}>+{m.quantite}</Text>
+                                                        <Pencil color="black" size={16} strokeWidth={1.5} />
                                                     </View>
                                                 </TouchableOpacity>
                                             );
-                                        }
-
-                                        return (
-                                            <TouchableOpacity
-                                                key={produit.id}
-                                                onPress={() => openSeuilSheet(produit)}
-                                                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#f5f5f5", paddingVertical: theme.internal_padding }}
-                                            >
-                                                <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
-                                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                    {stockBas && (
-                                                        <View style={{ backgroundColor: "#fdecea", borderRadius: theme.internal_radius_2, paddingHorizontal: 6, paddingVertical: 2 }}>
-                                                            <Text style={{ fontSize: theme.size_one, color: "#e74c3c" }}>Stock bas</Text>
-                                                        </View>
-                                                    )}
-                                                    <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: stockBas ? "#e74c3c" : undefined }}>{stockActuel}</Text>
-                                                </View>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
+                                        })}
+                                    </View>
+                                )}
+                                {categories.map((categorie) => {
+                                    const produits = (produitsQuery?.findBy("categorie_id", categorie.id) ?? []).slice().sort((a, b) => a.nom.localeCompare(b.nom));
+                                    if (produits.length === 0) return null;
+                                    return (
+                                        <View key={categorie.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
+                                            <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{categorie.nom}</Text>
+                                            {produits.map((produit) => (
+                                                <TouchableOpacity
+                                                    key={produit.id}
+                                                    onPress={() => listMode && openOperationSheet(produit, listMode)}
+                                                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: theme.touchTarget }}
+                                                >
+                                                    <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                        <Text style={{ fontSize: theme.size_two, opacity: 0.6 }}>{produit.stock_actuel ?? 0}</Text>
+                                                        <ChevronRight color="black" size={18} strokeWidth={1} />
+                                                    </View>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    );
+                                })}
                             </View>
-                        </ScrollView>
+                        </Container>
+                    </ScrollView>
                     </View>
+
+                    {listMode !== null && feuilleProduit("inline")}
                 </View>
             </Modal>
+
+            <BottomSheet
+                visible={categorieModalId !== null}
+                onClose={() => setCategorieModalId(null)}
+                showHandle={false}
+                sheetStyle={{ height: "85%", padding: 0, gap: 0 }}
+            >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: theme.screenPadding, borderBottomWidth: 1, borderBottomColor: "#f5f5f5" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>
+                            {categorieActuelle?.nom}
+                        </Text>
+                        <TouchableOpacity onPress={openCategorieSeuil} hitSlop={8}>
+                            <Pencil color="#0f86e7" size={16} strokeWidth={1.5} />
+                        </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity onPress={() => setCategorieModalId(null)}>
+                        <X color="black" size={22} strokeWidth={1.5} />
+                    </TouchableOpacity>
+                </View>
+                {categorieActuelle?.seuil_alerte != null && (
+                    <Text style={{ fontSize: theme.size_one, opacity: 0.6, paddingHorizontal: theme.screenPadding, paddingTop: theme.internal_padding_2 }}>
+                        Seuil par défaut de la catégorie : {categorieActuelle.seuil_alerte}
+                    </Text>
+                )}
+                <ScrollView style={{ flex: 1 }}>
+                    <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.screenPadding * 3 }}>
+                        {(produitsQuery?.findBy("categorie_id", categorieModalId ?? "") ?? [])
+                            .slice()
+                            .sort((a, b) => a.nom.localeCompare(b.nom))
+                            .map((produit, index) => {
+                                const stockActuel = produit.stock_actuel ?? 0;
+                                const stockBas = estStockBas(produit, categorieActuelle);
+
+                                if (index === 0) {
+                                    return (
+                                        <TouchableOpacity
+                                            key={produit.id}
+                                            onPress={() => openSeuilSheet(produit)}
+                                            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: theme.internal_padding }}
+                                        >
+                                            <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                {stockBas && (
+                                                    <View style={{ backgroundColor: "#fdecea", borderRadius: theme.internal_radius_2, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                                        <Text style={{ fontSize: theme.size_one, color: "#e74c3c" }}>Stock bas</Text>
+                                                    </View>
+                                                )}
+                                                <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: stockBas ? "#e74c3c" : undefined }}>{stockActuel}</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                }
+
+                                return (
+                                    <TouchableOpacity
+                                        key={produit.id}
+                                        onPress={() => openSeuilSheet(produit)}
+                                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#f5f5f5", paddingVertical: theme.internal_padding }}
+                                    >
+                                        <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                            {stockBas && (
+                                                <View style={{ backgroundColor: "#fdecea", borderRadius: theme.internal_radius_2, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                                    <Text style={{ fontSize: theme.size_one, color: "#e74c3c" }}>Stock bas</Text>
+                                                </View>
+                                            )}
+                                            <Text style={{ fontSize: theme.size_two, fontWeight: "bold", color: stockBas ? "#e74c3c" : undefined }}>{stockActuel}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                    </View>
+                </ScrollView>
+            </BottomSheet>
+
+            <BottomSheet visible={categorieSeuilVisible} onClose={() => setCategorieSeuilVisible(false)}>
+                <Text style={{ fontSize: theme.size_three, fontWeight: "bold", marginBottom: theme.internal_padding_2 }}>
+                    Seuil d'alerte — {categorieActuelle?.nom}
+                </Text>
+                <Text style={{ fontSize: theme.size_one, opacity: 0.6, marginBottom: theme.internal_padding_2 }}>
+                    S'applique à tous les produits de la catégorie sans seuil propre.
+                </Text>
+                <TextInput
+                    value={seuilCategorie}
+                    onChangeText={setSeuilCategorie}
+                    placeholder="Seuil (laisser vide pour désactiver)"
+                    placeholderTextColor={"#aaaaaa"}
+                    keyboardType="numeric"
+                    style={{ marginBottom: theme.internal_padding_2, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                />
+                <TouchableOpacity
+                    onPress={handleSeuilCategorie}
+                    disabled={isSubmitting}
+                    style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                </TouchableOpacity>
+            </BottomSheet>
         </View>
     );
 }

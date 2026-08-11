@@ -10,10 +10,11 @@ import { useEffect } from 'react';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { isLoading: dbLoading } = useDatabase();
+  const { isLoading: dbLoading, produitsQuery } = useDatabase();
   const { session, isLoading: authLoading } = useAuth();
 
   const isReady = !dbLoading && !authLoading;
+  const hasProduits = (produitsQuery?.findAll().length ?? 0) > 0;
 
   useEffect(() => {
     if (isReady) SplashScreen.hideAsync();
@@ -23,7 +24,7 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!!session}>
+      <Stack.Protected guard={!!session && hasProduits}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="etablissement" />
         <Stack.Screen name="utilisateurs" />
@@ -31,6 +32,9 @@ function RootNavigator() {
         <Stack.Screen name="session/[id]" />
         <Stack.Screen name="session-stock/[id]" />
         <Stack.Screen name="inventaire/[mode]" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session && !hasProduits}>
+        <Stack.Screen name="produits-requis" />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="welcome" />

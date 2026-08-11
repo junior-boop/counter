@@ -57,3 +57,20 @@ export async function ajouterMouvement(data: {
     ...data,
   });
 }
+
+export async function modifierMouvement(data: {
+  id: string;
+  type: MouvementCaisse["type"];
+  montant: number;
+  motif?: string;
+}): Promise<MouvementCaisse | null> {
+  return await MouvementCaisseModel.update(data.id, {
+    type: data.type,
+    montant: data.montant,
+    motif: data.motif ?? null,
+  });
+}
+
+export async function supprimerMouvement(id: string): Promise<void> {
+  await MouvementCaisseModel.delete(id);
+}

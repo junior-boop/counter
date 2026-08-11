@@ -8,6 +8,8 @@ export interface Categorie extends DatabaseRow {
   id: string;
   nom: string;
   type: TypeActivite;
+  /** Seuil par défaut pour les produits de la catégorie qui n'ont pas de seuil propre. */
+  seuil_alerte?: number | null;
 }
 
 export interface Etablissement extends DatabaseRow {

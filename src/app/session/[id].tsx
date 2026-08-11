@@ -1,13 +1,15 @@
 import { useAuth } from "@/Auth/auth.context";
 import { useAlert } from "@/components/alert/alert.context";
+import { BottomSheet } from "@/components/bottom-sheet";
 import { CommandesTimelineChart } from "@/components/CommandesTimelineChart";
+import { Container } from "@/components/Container";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { MouvementCaisse, Produit } from "@/Database/db";
 import { formaterMontant } from "@/lib/currency";
 import { formaterDateRelative, formaterHeure } from "@/lib/date";
-import { router, useLocalSearchParams } from "expo-router";
-import { ArrowDownCircle, ArrowLeft, ArrowUpCircle, ChevronDown, ChevronRight, Lock, Minus, Pencil, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
+import { router, Stack, useLocalSearchParams } from "expo-router";
+import { ArrowDownCircle, ArrowUpCircle, ChevronDown, ChevronRight, Lock, Minus, Pencil, Plus, ShoppingCart, Trash2, X } from "lucide-react-native";
 import { useState } from "react";
 import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,13 +17,15 @@ import theme from "../../constants/constant-style";
 
 export default function SessionDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { etablissement, sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
+    const { etablissement, sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, modifierMouvementCaisse, supprimerMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
     const { session: utilisateur } = useAuth();
     const { showError, confirm } = useAlert();
 
     const [montantFermeture, setMontantFermeture] = useState("");
     const [mouvement, setMouvement] = useState<{ type: MouvementCaisse["type"]; montant: string; motif: string }>({ type: "entree", montant: "", motif: "" });
     const [mouvementModalVisible, setMouvementModalVisible] = useState(false);
+    const [mouvementEnEditionId, setMouvementEnEditionId] = useState<string | null>(null);
+    const [mouvementActionCible, setMouvementActionCible] = useState<MouvementCaisse | null>(null);
     const [commandeModalVisible, setCommandeModalVisible] = useState(false);
     const [expandedCategorie, setExpandedCategorie] = useState<string | null>(null);
     const [expandedMouvementId, setExpandedMouvementId] = useState<string | null>(null);
@@ -42,8 +46,8 @@ export default function SessionDetailScreen() {
     // solder le stock, sinon les ventes continuent de courir sur un inventaire ouvert.
     const sessionStockOuverte = session
         ? (sessionsStockQuery?.findBy("type_activite", session.type_activite) ?? [])
-              .filter((s) => s.statut === "ouverte")
-              .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null
+            .filter((s) => s.statut === "ouverte")
+            .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null
         : null;
 
     const categoriesActivite = session ? (categoriesQuery?.findBy("type", session.type_activite) ?? []) : [];
@@ -54,6 +58,9 @@ export default function SessionDetailScreen() {
     }, 0);
 
     const nombreArticlesPanier = Object.values(panier).reduce((sum, q) => sum + q, 0);
+
+    const articlesParCategorie = (produits: Produit[]) =>
+        produits.reduce((sum, p) => sum + (panier[p.id] ?? 0), 0);
 
     const changerQuantite = (produitId: string, delta: number) => {
         setPanier((prev) => {
@@ -122,6 +129,7 @@ export default function SessionDetailScreen() {
     const closeMouvementModal = () => {
         setMouvementModalVisible(false);
         setMouvement({ type: "entree", montant: "", motif: "" });
+        setMouvementEnEditionId(null);
     };
 
     const handleAjouterMouvement = async () => {
@@ -137,18 +145,39 @@ export default function SessionDetailScreen() {
         }
         setIsSubmitting(true);
         try {
-            await ajouterMouvementCaisse({
-                session_id: session.id,
-                type: mouvement.type,
-                montant,
-                motif: mouvement.motif.trim() || undefined,
-                utilisateur_id: utilisateur.id,
-            });
-            setMouvement({ type: "entree", montant: "", motif: "" });
-            setMouvementModalVisible(false);
+            if (mouvementEnEditionId) {
+                await modifierMouvementCaisse({ id: mouvementEnEditionId, type: mouvement.type, montant, motif: mouvement.motif.trim() || undefined });
+            } else {
+                await ajouterMouvementCaisse({
+                    session_id: session.id,
+                    type: mouvement.type,
+                    montant,
+                    motif: mouvement.motif.trim() || undefined,
+                    utilisateur_id: utilisateur.id,
+                });
+            }
+            closeMouvementModal();
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const closeMouvementActionModal = () => setMouvementActionCible(null);
+
+    const handleModifierMouvement = () => {
+        if (!mouvementActionCible) return;
+        setMouvement({ type: mouvementActionCible.type, montant: String(mouvementActionCible.montant), motif: mouvementActionCible.motif ?? "" });
+        setMouvementEnEditionId(mouvementActionCible.id);
+        setMouvementActionCible(null);
+        setMouvementModalVisible(true);
+    };
+
+    const handleSupprimerMouvement = async () => {
+        if (!mouvementActionCible) return;
+        const ok = await confirm("Supprimer ce mouvement ? Cette action est définitive.", { confirmLabel: "Supprimer" });
+        if (!ok) return;
+        await supprimerMouvementCaisse(mouvementActionCible.id);
+        setMouvementActionCible(null);
     };
 
     const handleFermer = async () => {
@@ -181,21 +210,22 @@ export default function SessionDetailScreen() {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
+            <Stack.Screen options={{ title: "Détail de la session", headerShadowVisible: false, headerShown: true, headerTitleStyle: { fontSize: theme.size_three }, headerStyle: { backgroundColor: "#f5f5f5" } }} />
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-                <View style={{ height: 62, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
+                {/* <View style={{ height: 62, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
                     <TouchableOpacity onPress={() => router.back()}>
                         <ArrowLeft color="black" size={22} strokeWidth={1.5} />
                     </TouchableOpacity>
                     <Text style={{ fontSize: theme.size_three }}>Détail de la session</Text>
-                </View>
+                </View> */}
 
                 {!session ? (
                     <View style={{ paddingHorizontal: theme.screenPadding }}>
                         <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Session introuvable.</Text>
                     </View>
                 ) : (
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: theme.internal_padding }}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: theme.internal_padding }}>
                         <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
                             <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
                                 <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>
@@ -247,13 +277,16 @@ export default function SessionDetailScreen() {
                                     const estCommande = !!m.commande_id;
                                     const isExpanded = expandedMouvementId === m.id;
                                     const lignes = estCommande ? (lignesCommandeQuery?.findBy("commande_id", m.commande_id!) ?? []) : [];
-                                    const Wrapper = estCommande ? TouchableOpacity : View;
+                                    const interactif = estCommande || session.statut === "ouverte";
+                                    const Wrapper = interactif ? TouchableOpacity : View;
                                     return (
                                         <View key={m.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, overflow: "hidden" }}>
                                             <Wrapper
-                                                {...(estCommande ? {
-                                                    onPress: () => setExpandedMouvementId(isExpanded ? null : m.id),
-                                                    ...(session.statut === "ouverte" ? { onLongPress: () => setCommandeActionMouvement(m) } : {}),
+                                                {...(interactif ? {
+                                                    ...(estCommande ? { onPress: () => setExpandedMouvementId(isExpanded ? null : m.id) } : {}),
+                                                    ...(session.statut === "ouverte" ? {
+                                                        onLongPress: () => estCommande ? setCommandeActionMouvement(m) : setMouvementActionCible(m),
+                                                    } : {}),
                                                 } : {})}
                                                 style={{ padding: theme.internal_padding, flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}
                                             >
@@ -315,64 +348,76 @@ export default function SessionDetailScreen() {
             </KeyboardAvoidingView>
 
             {/** Modal pour ajouter un mouvement */}
-            <Modal visible={mouvementModalVisible} transparent animationType="slide" onRequestClose={closeMouvementModal}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
+            <BottomSheet visible={mouvementModalVisible} onClose={closeMouvementModal}>
+                <Text style={{ fontSize: theme.size_two, fontWeight: "bold", marginBottom: theme.internal_padding }}>
+                    {mouvementEnEditionId ? "Modifier le mouvement" : "Ajouter un mouvement"}
+                </Text>
+                <View style={{ flexDirection: "row", gap: theme.internal_padding_2, marginBottom: theme.internal_padding_2 }}>
                     <TouchableOpacity
-                        activeOpacity={1}
-                        onPress={closeMouvementModal}
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }}
-                    />
-                    <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Ajouter un mouvement</Text>
-                        <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
-                            <TouchableOpacity
-                                onPress={() => setMouvement((prev) => ({ ...prev, type: "entree" }))}
-                                style={{ flex: 1, paddingVertical: theme.internal_padding_2, borderRadius: theme.internal_radius_2, alignItems: "center", backgroundColor: mouvement.type === "entree" ? "#eaf4fd" : "#f5f5f5" }}
-                            >
-                                <Text style={{ fontSize: theme.size_one, color: mouvement.type === "entree" ? "#0f86e7" : "black" }}>Entrée</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => setMouvement((prev) => ({ ...prev, type: "sortie" }))}
-                                style={{ flex: 1, paddingVertical: theme.internal_padding_2, borderRadius: theme.internal_radius_2, alignItems: "center", backgroundColor: mouvement.type === "sortie" ? "#fdeceb" : "#f5f5f5" }}
-                            >
-                                <Text style={{ fontSize: theme.size_one, color: mouvement.type === "sortie" ? "#e74c3c" : "black" }}>Sortie</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <TextInput
-                            value={mouvement.montant}
-                            onChangeText={(montant) => setMouvement((prev) => ({ ...prev, montant }))}
-                            placeholder="Montant"
-                            placeholderTextColor={"#aaaaaa"}
-                            keyboardType="numeric"
-                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
-                        />
-                        <TextInput
-                            value={mouvement.motif}
-                            onChangeText={(motif) => setMouvement((prev) => ({ ...prev, motif }))}
-                            placeholder={mouvement.type === "sortie" ? "Motif (obligatoire)" : "Motif (facultatif)"}
-                            placeholderTextColor={"#aaaaaa"}
-                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
-                        />
-                        <TouchableOpacity
-                            onPress={handleAjouterMouvement}
-                            disabled={isSubmitting}
-                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: isSubmitting ? 0.5 : 1 }}
-                        >
-                            <Text style={{ fontSize: theme.size_two, color: "white" }}>Ajouter</Text>
-                        </TouchableOpacity>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
+                        onPress={() => setMouvement((prev) => ({ ...prev, type: "entree" }))}
+                        style={{ flex: 1, paddingVertical: theme.internal_padding_2, borderRadius: theme.internal_radius_2, alignItems: "center", backgroundColor: mouvement.type === "entree" ? "#eaf4fd" : "#f5f5f5" }}
+                    >
+                        <Text style={{ fontSize: theme.size_one, color: mouvement.type === "entree" ? "#0f86e7" : "black" }}>Entrée</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => setMouvement((prev) => ({ ...prev, type: "sortie" }))}
+                        style={{ flex: 1, paddingVertical: theme.internal_padding_2, borderRadius: theme.internal_radius_2, alignItems: "center", backgroundColor: mouvement.type === "sortie" ? "#fdeceb" : "#f5f5f5" }}
+                    >
+                        <Text style={{ fontSize: theme.size_one, color: mouvement.type === "sortie" ? "#e74c3c" : "black" }}>Sortie</Text>
+                    </TouchableOpacity>
+                </View>
+                <TextInput
+                    value={mouvement.montant}
+                    onChangeText={(montant) => setMouvement((prev) => ({ ...prev, montant }))}
+                    placeholder="Montant"
+                    placeholderTextColor={"#aaaaaa"}
+                    keyboardType="numeric"
+                    style={{ marginBottom: theme.internal_padding_2, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
+                />
+                <TextInput
+                    value={mouvement.motif}
+                    onChangeText={(motif) => setMouvement((prev) => ({ ...prev, motif }))}
+                    placeholder={mouvement.type === "sortie" ? "Motif (obligatoire)" : "Motif (facultatif)"}
+                    placeholderTextColor={"#aaaaaa"}
+                    style={{ marginBottom: theme.internal_padding_2, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
+                />
+                <TouchableOpacity
+                    onPress={handleAjouterMouvement}
+                    disabled={isSubmitting}
+                    style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: isSubmitting ? 0.5 : 1 }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white" }}>{mouvementEnEditionId ? "Enregistrer" : "Ajouter"}</Text>
+                </TouchableOpacity>
+            </BottomSheet>
 
             {/** Modal pour passer une commande */}
             <Modal visible={commandeModalVisible} animationType="slide" onRequestClose={closeCommandeModal}>
                 <SafeAreaView style={{ flex: 1 }}>
-                    <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
+                    <View style={{ height: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
                         <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{commandeEnEditionId ? "Modifier la commande" : "Nouvelle commande"}</Text>
                         <TouchableOpacity onPress={closeCommandeModal}>
-                            <Text style={{ fontSize: theme.size_two, color: "#0f86e7" }}>Fermer</Text>
+                            <X size={20} color={"#0f86e7"} />
                         </TouchableOpacity>
                     </View>
+
+                    <Container style={{ paddingBottom: theme.internal_padding }}>
+                        <View style={{ gap: 3, borderRadius: theme.internal_radius, overflow: 'hidden' }}>
+                            {nombreArticlesPanier === 0 ? (
+                                <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun produit sélectionné.</Text>
+                            ) : (
+                                Object.entries(panier).map(([produitId, quantite]) => {
+                                    const produit = produitsQuery?.findById(produitId);
+                                    if (!produit || quantite <= 0) return null;
+                                    return (
+                                        <View key={produitId} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2 }}>
+                                            <Text style={{ fontSize: theme.size_two }}>{quantite} × {produit.nom}</Text>
+                                            <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(produit.prix * quantite)}</Text>
+                                        </View>
+                                    );
+                                })
+                            )}
+                        </View>
+                    </Container>
 
                     <ScrollView style={{ flex: 1 }}>
                         <View style={{ paddingHorizontal: theme.screenPadding, paddingBottom: theme.internal_padding, gap: 8, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
@@ -391,40 +436,47 @@ export default function SessionDetailScreen() {
                                             onPress={() => setExpandedCategorie(isExpanded ? null : categorie.id)}
                                         >
                                             <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
-                                            <ChevronRight color="black" size={20} strokeWidth={1} style={{ transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] }} />
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
+                                                {/* Le panier reste visible même catégorie repliée : sinon on
+                                                    ne sait plus où sont les articles déjà sélectionnés. */}
+                                                {articlesParCategorie(produits) > 0 && (
+                                                    <Text style={{ fontSize: theme.size_one, color: "white", backgroundColor: "#0f86e7", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1, overflow: "hidden" }}>
+                                                        {articlesParCategorie(produits)}
+                                                    </Text>
+                                                )}
+                                                {isExpanded
+                                                    ? <ChevronDown color="black" size={20} strokeWidth={1} />
+                                                    : <ChevronRight color="black" size={20} strokeWidth={1} />}
+                                            </View>
                                         </TouchableOpacity>
 
+                                        {/* La liste était rendue même repliée : tout le catalogue de
+                                            toutes les catégories montait à l'ouverture de la modale. */}
                                         {isExpanded && (
-                                            <View style={{ marginTop: theme.internal_padding, gap: 8 }}>
-                                                {produits.map((produit) => {
-                                                    const quantite = panier[produit.id] ?? 0;
-                                                    return (
-                                                        <View key={produit.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: theme.touchTarget }}>
-                                                            <View style={{ flex: 1 }}>
-                                                                <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
-                                                                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{formaterMontant(produit.prix)}</Text>
-                                                            </View>
-                                                            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}>
-                                                                <TouchableOpacity
-                                                                    onPress={() => changerQuantite(produit.id, -1)}
-                                                                    disabled={quantite === 0}
-                                                                    style={{ width: 28, height: 28, borderRadius: theme.internal_radius_2, backgroundColor: "#f1f1f1", alignItems: "center", justifyContent: "center", opacity: quantite === 0 ? 0.4 : 1 }}
-                                                                >
-                                                                    <Minus color="black" size={16} strokeWidth={2} />
-                                                                </TouchableOpacity>
-                                                                <Text style={{ fontSize: theme.size_two, minWidth: 20, textAlign: "center" }}>{quantite}</Text>
-                                                                <TouchableOpacity
-                                                                    onPress={() => changerQuantite(produit.id, 1)}
-                                                                    style={{ width: 28, height: 28, borderRadius: theme.internal_radius_2, backgroundColor: "#eaf4fd", alignItems: "center", justifyContent: "center" }}
-                                                                >
-                                                                    <Plus color="#0f86e7" size={16} strokeWidth={2} />
-                                                                </TouchableOpacity>
-                                                            </View>
+                                        <View style={{ marginTop: theme.internal_padding_2, gap: 3 }}>
+                                            {produits.map((produit) => {
+                                                const qte = panier[produit.id] ?? 0;
+                                                return (
+                                                    <View key={produit.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: theme.internal_padding_2 }}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={{ fontSize: theme.size_two }}>{produit.nom}</Text>
+                                                            <Text style={{ fontSize: theme.size_one, color: "#777" }}>{formaterMontant(produit.prix)}</Text>
                                                         </View>
-                                                    );
-                                                })}
-                                            </View>
+                                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                                            <TouchableOpacity onPress={() => changerQuantite(produit.id, -1)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" }}>
+                                                                <Minus size={16} color="#000" />
+                                                            </TouchableOpacity>
+                                                            <Text style={{ fontSize: theme.size_two, minWidth: 18, textAlign: "center" }}>{qte}</Text>
+                                                            <TouchableOpacity onPress={() => changerQuantite(produit.id, 1)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f5f5f5", alignItems: "center", justifyContent: "center" }}>
+                                                                <Plus size={16} color="#000" />
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
                                         )}
+
                                     </View>
                                 );
                             })}
@@ -439,7 +491,7 @@ export default function SessionDetailScreen() {
                         <TouchableOpacity
                             onPress={handlePasserCommande}
                             disabled={nombreArticlesPanier === 0 || isSubmitting}
-                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: (nombreArticlesPanier === 0 || isSubmitting) ? 0.5 : 1 }}
+                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, opacity: (nombreArticlesPanier === 0 || isSubmitting) ? 0.5 : 1 }}
                         >
                             <Text style={{ fontSize: theme.size_two, color: "white" }}>{commandeEnEditionId ? "Enregistrer les modifications" : "Valider la commande"}</Text>
                         </TouchableOpacity>
@@ -448,37 +500,54 @@ export default function SessionDetailScreen() {
             </Modal>
 
             {/** Modal d'actions sur une commande (modifier / supprimer) */}
-            <Modal visible={!!commandeActionMouvement} transparent animationType="slide" onRequestClose={closeCommandeActionModal}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
+            <BottomSheet visible={!!commandeActionMouvement} onClose={closeCommandeActionModal}>
+                <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(commandeActionMouvement?.montant ?? 0)}</Text>
+                {commandeActionMouvement?.motif && (
+                    <Text style={{ fontSize: theme.size_one, opacity: 0.6, paddingBottom: theme.internal_padding }}>{commandeActionMouvement.motif}</Text>
+                )}
+                <View>
                     <TouchableOpacity
-                        activeOpacity={1}
-                        onPress={closeCommandeActionModal}
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }}
-                    />
-                    <View style={{ backgroundColor: "white", padding: theme.screenPadding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(commandeActionMouvement?.montant ?? 0)}</Text>
-                        {commandeActionMouvement?.motif && (
-                            <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{commandeActionMouvement.motif}</Text>
-                        )}
-                        <View style={{ marginTop: theme.internal_padding }}>
-                            <TouchableOpacity
-                                onPress={handleModifierCommande}
-                                style={{ borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "flex-start", flexDirection: "row", gap: theme.internal_padding, paddingVertical: theme.internal_padding }}
-                            >
-                                <Pencil size={18} strokeWidth={1.5} />
-                                <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Modifier</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={handleSupprimerCommande}
-                                style={{ borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "flex-start", paddingVertical: theme.internal_padding, flexDirection: "row", gap: theme.internal_padding }}
-                            >
-                                <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
-                                <Text style={{ fontSize: theme.size_two, color: "#e74c3c", fontWeight: "bold" }}>Supprimer</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
-        </SafeAreaView>
+                        onPress={handleModifierCommande}
+                        style={{ alignItems: "center", justifyContent: "flex-start", flexDirection: "row", gap: theme.internal_padding, paddingVertical: theme.internal_padding }}
+                    >
+                        <Pencil size={18} strokeWidth={1.5} />
+                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={handleSupprimerCommande}
+                        style={{ alignItems: "center", justifyContent: "flex-start", paddingVertical: theme.internal_padding, flexDirection: "row", gap: theme.internal_padding }}
+                    >
+                        <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
+                        <Text style={{ fontSize: theme.size_two, color: "#e74c3c", fontWeight: "bold" }}>Supprimer</Text>
+                    </TouchableOpacity>
+                </View>
+            </BottomSheet>
+
+            {/** Modal d'actions sur un mouvement de caisse simple (modifier / supprimer) */}
+            <BottomSheet visible={!!mouvementActionCible} onClose={closeMouvementActionModal}>
+                <View style={{ marginBottom: theme.internal_padding }}>
+                    <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterMontant(mouvementActionCible?.montant ?? 0)}</Text>
+                    {mouvementActionCible?.motif && (
+                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{mouvementActionCible.motif}</Text>
+                    )}
+                </View>
+                <View>
+                    <TouchableOpacity
+                        onPress={handleModifierMouvement}
+                        style={{ borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "flex-start", flexDirection: "row", gap: theme.internal_padding, paddingVertical: theme.internal_padding }}
+                    >
+                        <Pencil size={18} strokeWidth={1.5} />
+                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={handleSupprimerMouvement}
+                        style={{ borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "flex-start", paddingVertical: theme.internal_padding, flexDirection: "row", gap: theme.internal_padding }}
+                    >
+                        <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
+                        <Text style={{ fontSize: theme.size_two, color: "#e74c3c", fontWeight: "bold" }}>Supprimer</Text>
+                    </TouchableOpacity>
+                </View>
+            </BottomSheet>
+        </View>
     );
 }

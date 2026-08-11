@@ -1,5 +1,6 @@
 import { useAuth } from "@/Auth/auth.context";
 import { useAlert } from "@/components/alert/alert.context";
+import { BottomSheet } from "@/components/bottom-sheet";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { TypeActivite } from "@/Database/db";
@@ -8,7 +9,7 @@ import { formaterDateRelative } from "@/lib/date";
 import { router } from "expo-router";
 import { ArrowLeft, ChevronRight } from "lucide-react-native";
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
@@ -178,33 +179,24 @@ export default function CaisseScreen() {
             </KeyboardAvoidingView>
 
             {/** Modal pour ouvrir une nouvelle session */}
-            <Modal visible={nouvelleSessionModalVisible} transparent animationType="slide" onRequestClose={closeNouvelleSessionModal}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
-                    <TouchableOpacity
-                        activeOpacity={1}
-                        onPress={closeNouvelleSessionModal}
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }}
-                    />
-                    <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Nouvelle session</Text>
-                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Enregistrez le montant présent en caisse pour ouvrir une nouvelle session.</Text>
-                        <TextInput
-                            value={montantOuverture}
-                            onChangeText={setMontantOuverture}
-                            placeholder="Montant d'ouverture (XAF)"
-                            placeholderTextColor={"#aaaaaa"}
-                            keyboardType="numeric"
-                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
-                        />
-                        <TouchableOpacity
-                            onPress={handleOuvrir}
-                            style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                        >
-                            <Text style={{ fontSize: theme.size_two, color: "white" }}>Ouvrir la caisse</Text>
-                        </TouchableOpacity>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
+            <BottomSheet visible={nouvelleSessionModalVisible} onClose={closeNouvelleSessionModal}>
+                <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Nouvelle session</Text>
+                <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>Enregistrez le montant présent en caisse pour ouvrir une nouvelle session.</Text>
+                <TextInput
+                    value={montantOuverture}
+                    onChangeText={setMontantOuverture}
+                    placeholder="Montant d'ouverture (XAF)"
+                    placeholderTextColor={"#aaaaaa"}
+                    keyboardType="numeric"
+                    style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two, color: "black" }}
+                />
+                <TouchableOpacity
+                    onPress={handleOuvrir}
+                    style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, color: "white" }}>Ouvrir la caisse</Text>
+                </TouchableOpacity>
+            </BottomSheet>
         </View>
     );
 }

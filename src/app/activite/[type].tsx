@@ -1,4 +1,5 @@
 import { useAlert } from "@/components/alert/alert.context";
+import { BottomSheet } from "@/components/bottom-sheet";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { Produit, TypeActivite } from "@/Database/db";
@@ -6,7 +7,7 @@ import { formaterMontant } from "@/lib/currency";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react-native";
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
 
@@ -116,10 +117,16 @@ export default function ActiviteScreen() {
         if (isSubmitting || !selectedProduit) return;
         const ok = await confirm(`Supprimer "${selectedProduit.nom}" ?`, { confirmLabel: "Supprimer" });
         if (!ok) return;
+        const id = selectedProduit.id;
+        // On referme la feuille AVANT de supprimer : effacer le dernier produit
+        // fait basculer le garde de navigation dans _layout.tsx, qui démonte cet
+        // écran. Le démonter avec une Modal présentée et un champ focalisé fait
+        // planter react-native-screens côté natif.
+        closeSheet();
+        Keyboard.dismiss();
         setIsSubmitting(true);
         try {
-            await deleteProduit(selectedProduit.id);
-            closeSheet();
+            await deleteProduit(id);
         } finally {
             setIsSubmitting(false);
         }
@@ -250,74 +257,67 @@ export default function ActiviteScreen() {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            <Modal visible={selectedProduit !== null} transparent animationType="slide" onRequestClose={closeSheet}>
-                <KeyboardAvoidingView style={{ flex: 1, justifyContent: "flex-end" }} behavior="padding">
-                    <View style={{ flex: 1, position: 'relative', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={closeSheet} />
-                        <View style={{ backgroundColor: "white", padding: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth }}>
-                            {!isEditing ? (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedProduit?.nom}</Text>
-                                    <TouchableOpacity
-                                        onPress={startEditing}
-                                        disabled={isSubmitting}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
-                                    >
-                                        <Pencil color="black" size={18} strokeWidth={1.5} />
-                                        <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={handleDeleteProduit}
-                                        disabled={isSubmitting}
-                                        style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
-                                    >
-                                        <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
-                                        <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
-                                    </TouchableOpacity>
-                                </>
-                            ) : (
-                                <>
-                                    <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Modifier le produit</Text>
-                                    <TextInput
-                                        value={editForm.nom}
-                                        onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
-                                        placeholder="Produit"
-                                        placeholderTextColor={"#aaaaaa"}
-                                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                    />
-                                    <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
-                                        <TextInput
-                                            value={editForm.prix}
-                                            onChangeText={(prix) => setEditForm((prev) => ({ ...prev, prix }))}
-                                            placeholder="Prix"
-                                            placeholderTextColor={"#aaaaaa"}
-                                            keyboardType="numeric"
-                                            style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                        />
-                                        {type === "bar" && (
-                                            <TextInput
-                                                value={editForm.quantite_par_lot}
-                                                onChangeText={(quantite_par_lot) => setEditForm((prev) => ({ ...prev, quantite_par_lot }))}
-                                                placeholder="Qte/lot"
-                                                placeholderTextColor={"#aaaaaa"}
-                                                keyboardType="numeric"
-                                                style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                            />
-                                        )}
-                                    </View>
-                                    <TouchableOpacity
-                                        onPress={handleUpdateProduit}
-                                        disabled={isSubmitting}
-                                        style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
-                                    >
-                                        <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
-                                    </TouchableOpacity>
-                                </>
+            <BottomSheet visible={selectedProduit !== null} onClose={closeSheet}>
+                {!isEditing ? (
+                    <>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{selectedProduit?.nom}</Text>
+                        <TouchableOpacity
+                            onPress={startEditing}
+                            disabled={isSubmitting}
+                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
+                        >
+                            <Pencil color="black" size={18} strokeWidth={1.5} />
+                            <Text style={{ fontSize: theme.size_two }}>Modifier</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={handleDeleteProduit}
+                            disabled={isSubmitting}
+                            style={{ flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2, paddingVertical: theme.internal_padding_2, opacity: isSubmitting ? 0.5 : 1 }}
+                        >
+                            <Trash2 color="#e74c3c" size={18} strokeWidth={1.5} />
+                            <Text style={{ fontSize: theme.size_two, color: "#e74c3c" }}>Supprimer</Text>
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Modifier le produit</Text>
+                        <TextInput
+                            value={editForm.nom}
+                            onChangeText={(nom) => setEditForm((prev) => ({ ...prev, nom }))}
+                            placeholder="Produit"
+                            placeholderTextColor={"#aaaaaa"}
+                            style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                        />
+                        <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
+                            <TextInput
+                                value={editForm.prix}
+                                onChangeText={(prix) => setEditForm((prev) => ({ ...prev, prix }))}
+                                placeholder="Prix"
+                                placeholderTextColor={"#aaaaaa"}
+                                keyboardType="numeric"
+                                style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                            />
+                            {type === "bar" && (
+                                <TextInput
+                                    value={editForm.quantite_par_lot}
+                                    onChangeText={(quantite_par_lot) => setEditForm((prev) => ({ ...prev, quantite_par_lot }))}
+                                    placeholder="Qte/lot"
+                                    placeholderTextColor={"#aaaaaa"}
+                                    keyboardType="numeric"
+                                    style={{ flex: 1, backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                />
                             )}
                         </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
+                        <TouchableOpacity
+                            onPress={handleUpdateProduit}
+                            disabled={isSubmitting}
+                            style={{ backgroundColor: "#0f86e7", opacity: isSubmitting ? 0.5 : 1, borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding }}
+                        >
+                            <Text style={{ fontSize: theme.size_two, color: "white" }}>Enregistrer</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+            </BottomSheet>
         </SafeAreaView>
     );
 }

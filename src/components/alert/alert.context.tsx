@@ -32,6 +32,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     const [state, setState] = useState<AlertState>(null);
     const translateY = useRef(new Animated.Value(120)).current;
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
 
     const dismiss = useCallback(() => {
         if (timerRef.current) clearTimeout(timerRef.current);
@@ -40,6 +41,13 @@ export function AlertProvider({ children }: { children: ReactNode }) {
 
     const present = useCallback((next: AlertState, duration?: number) => {
         if (timerRef.current) clearTimeout(timerRef.current);
+        // Un confirm remplacé par une autre alerte laissait sa promesse en
+        // suspens pour toujours : le handler qui l'attendait ne reprenait jamais.
+        if (confirmResolveRef.current && next?.kind !== "confirm") {
+            const abandonne = confirmResolveRef.current;
+            confirmResolveRef.current = null;
+            abandonne(false);
+        }
         setState(next);
         translateY.setValue(120);
         Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }).start();
@@ -58,6 +66,9 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     const confirm = useCallback(
         (message: string, options?: { confirmLabel?: string; cancelLabel?: string }) => {
             return new Promise<boolean>((resolve) => {
+                // Un confirm déjà à l'écran est annulé plutôt que perdu.
+                confirmResolveRef.current?.(false);
+                confirmResolveRef.current = resolve;
                 present({
                     kind: "confirm",
                     message,
@@ -72,11 +83,14 @@ export function AlertProvider({ children }: { children: ReactNode }) {
 
     const resolveConfirm = useCallback(
         (value: boolean) => {
-            setState((current) => {
-                if (current?.kind === "confirm") current.resolve(value);
-                return current;
-            });
+            // La résolution se faisait dans l'updater de setState. Un updater doit
+            // être pur : React 19 (+ React Compiler) peut le rejouer, ce qui
+            // résolvait la promesse deux fois, ou déclenchait une mise à jour
+            // d'un autre composant pendant le rendu. On passe par une ref.
+            const attendu = confirmResolveRef.current;
+            confirmResolveRef.current = null;
             dismiss();
+            attendu?.(value);
         },
         [dismiss]
     );

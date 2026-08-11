@@ -1,4 +1,4 @@
-import { CategoriePerte, MouvementStock, MouvementStockModel, ProduitModel, SessionStock, SessionStockModel, TypeActivite, TypeMouvementStock } from "./db";
+import { Categorie, CategorieModel, CategoriePerte, MouvementStock, MouvementStockModel, Produit, ProduitModel, SessionStock, SessionStockModel, TypeActivite, TypeMouvementStock } from "./db";
 import { generateUUID } from "./uuid";
 
 export async function createTable() {
@@ -26,6 +26,11 @@ export async function createTable() {
   }
   try {
     await MouvementStockModel.orm.run("ALTER TABLE mouvements_stock ADD COLUMN commande_id TEXT");
+  } catch {
+    // colonne déjà présente
+  }
+  try {
+    await CategorieModel.orm.run("ALTER TABLE categories ADD COLUMN seuil_alerte REAL");
   } catch {
     // colonne déjà présente
   }
@@ -146,6 +151,64 @@ export async function ajouterMouvement(data: {
   });
 }
 
+export async function modifierMouvement(data: {
+  id: string;
+  quantite: number;
+  categorie_perte?: CategoriePerte;
+  motif?: string;
+}): Promise<MouvementStock | null> {
+  const mouvement = await MouvementStockModel.findById(data.id);
+  if (!mouvement) return null;
+
+  const produit = await ProduitModel.findById(mouvement.produit_id);
+  if (produit) {
+    const stockActuel = produit.stock_actuel ?? 0;
+    const stockSansAncienMouvement = mouvement.type === "reapprovisionnement"
+      ? stockActuel - mouvement.quantite
+      : stockActuel + mouvement.quantite;
+    const nouveauStock = mouvement.type === "reapprovisionnement"
+      ? stockSansAncienMouvement + data.quantite
+      : Math.max(0, stockSansAncienMouvement - data.quantite);
+    await ProduitModel.update(mouvement.produit_id, { stock_actuel: nouveauStock });
+  }
+
+  return await MouvementStockModel.update(data.id, {
+    quantite: data.quantite,
+    categorie_perte: mouvement.type === "perte" ? data.categorie_perte ?? mouvement.categorie_perte ?? null : null,
+    motif: data.motif ?? null,
+  });
+}
+
+export async function supprimerMouvement(id: string): Promise<void> {
+  const mouvement = await MouvementStockModel.findById(id);
+  if (!mouvement) return;
+
+  const produit = await ProduitModel.findById(mouvement.produit_id);
+  if (produit) {
+    const stockActuel = produit.stock_actuel ?? 0;
+    const nouveauStock = mouvement.type === "reapprovisionnement"
+      ? Math.max(0, stockActuel - mouvement.quantite)
+      : stockActuel + mouvement.quantite;
+    await ProduitModel.update(mouvement.produit_id, { stock_actuel: nouveauStock });
+  }
+
+  await MouvementStockModel.delete(id);
+}
+
 export async function modifierSeuilAlerte(produit_id: string, seuil_alerte: number | null) {
   return await ProduitModel.update(produit_id, { seuil_alerte });
+}
+
+export async function modifierSeuilAlerteCategorie(categorie_id: string, seuil_alerte: number | null) {
+  return await CategorieModel.update(categorie_id, { seuil_alerte });
+}
+
+/** Seuil produit prioritaire, sinon celui de la catégorie, sinon pas d'alerte. */
+export function seuilEffectif(produit: Produit, categorie: Categorie | null): number | null {
+  return produit.seuil_alerte ?? categorie?.seuil_alerte ?? null;
+}
+
+export function estStockBas(produit: Produit, categorie: Categorie | null): boolean {
+  const seuil = seuilEffectif(produit, categorie);
+  return seuil != null && (produit.stock_actuel ?? 0) <= seuil;
 }

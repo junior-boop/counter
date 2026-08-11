@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { LayoutChangeEvent, ScrollView, View } from "react-native";
+import { ActivityIndicator, LayoutChangeEvent, ScrollView, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
 import theme from "../constants/constant-style";
@@ -34,6 +34,12 @@ export function CommandesTimelineChart({ commandes, debut, fin }: { commandes: C
 
     const debutAligne = Math.floor(new Date(debut).getTime() / PAS_MS) * PAS_MS;
     const finBrute = fin ? new Date(fin).getTime() : Date.now();
+
+    // Une date illisible propageait NaN jusqu'à `<Svg width={NaN}>` : la vue
+    // native Android n'accepte pas NaN et fait tomber l'écran. Tous les hooks
+    // sont appelés au-dessus, la sortie anticipée est donc sans risque.
+    if (!Number.isFinite(debutAligne) || !Number.isFinite(finBrute)) return null;
+
     const finAlignee = Math.max(debutAligne + PAS_MS, Math.ceil(finBrute / PAS_MS) * PAS_MS);
 
     const creneauxTotal = Math.round((finAlignee - debutAligne) / PAS_MS);
@@ -74,7 +80,9 @@ export function CommandesTimelineChart({ commandes, debut, fin }: { commandes: C
     return (
         <Animated.View
             layout={LinearTransition.duration(220)}
-            style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding }}
+            // `selection ? ...` : le créneau d'index 0 est falsy, la carte de détail
+            // s'affichait alors sans que le conteneur grandisse — contenu tronqué.
+            style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding, height: selection !== null ? 280 : 215 }}
         >
             <View style={{ gap: 2 }}>
                 <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>Rythme des commandes</Text>
@@ -91,6 +99,12 @@ export function CommandesTimelineChart({ commandes, debut, fin }: { commandes: C
             </View>
 
             <View onLayout={onLayout} style={{ width: "100%", flexDirection: "row" }}>
+                {largeur === 0 && (
+                    <View style={{ height: HAUTEUR_TOTAL, width: "100%", alignItems: "center", justifyContent: 'center', gap: 8 }}>
+                        <ActivityIndicator size="small" color={COULEUR_BARRE} />
+                        <Text style={STYLE_DISCRET}>Chargement du graphique…</Text>
+                    </View>
+                )}
                 {largeur > 0 && (
                     <Fragment>
                         <Svg width={GOUTTIERE} height={HAUTEUR_TOTAL}>

@@ -47,6 +47,8 @@ interface DatabaseContextType {
   ouvrirSessionCaisse: (data: { type_activite: SessionCaisse["type_activite"]; montant_ouverture: number; utilisateur_ouverture_id: string }) => Promise<SessionCaisse | undefined>;
   fermerSessionCaisse: (data: { id: string; montant_fermeture: number; ecart: number; utilisateur_fermeture_id: string }) => Promise<void>;
   ajouterMouvementCaisse: (data: { session_id: string; type: MouvementCaisse["type"]; montant: number; motif?: string; utilisateur_id: string }) => Promise<MouvementCaisse | undefined>;
+  modifierMouvementCaisse: (data: { id: string; type: MouvementCaisse["type"]; montant: number; motif?: string }) => Promise<void>;
+  supprimerMouvementCaisse: (id: string) => Promise<void>;
   commandesQuery: QueryForTable<Commande> | null;
   lignesCommandeQuery: QueryForTable<LigneCommande> | null;
   passerCommande: (data: { session_id: string; utilisateur_id: string; lignes: { produit: Produit; quantite: number }[] }) => Promise<Commande | undefined>;
@@ -57,10 +59,45 @@ interface DatabaseContextType {
   ouvrirSessionStock: (data: { type_activite: TypeActivite; utilisateur_ouverture_id: string; comptages: { produit_id: string; quantite: number }[] }) => Promise<SessionStock | undefined>;
   fermerSessionStock: (data: { id: string; utilisateur_fermeture_id: string; comptages: { produit_id: string; quantite: number }[] }) => Promise<void>;
   ajouterMouvementStock: (data: { session_id: string; produit_id: string; type: TypeMouvementStock; quantite: number; categorie_perte?: CategoriePerte; motif?: string; utilisateur_id: string }) => Promise<MouvementStock | undefined>;
+  modifierMouvementStock: (data: { id: string; quantite: number; categorie_perte?: CategoriePerte; motif?: string }) => Promise<void>;
+  supprimerMouvementStock: (id: string) => Promise<void>;
   modifierSeuilAlerteProduit: (produit_id: string, seuil_alerte: number | null) => Promise<void>;
+  modifierSeuilAlerteCategorie: (categorie_id: string, seuil_alerte: number | null) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
+
+/**
+ * Chaque mutation déclare les tables qu'elle touche. Avant, la moindre écriture
+ * relisait les 10 tables et recréait les 10 QueryForTable : identité du contexte
+ * changée à chaque fois, donc *tous* les écrans se re-rendaient et tous les index
+ * étaient jetés. Un simple changement de seuil d'alerte relisait l'historique
+ * complet des mouvements.
+ */
+type TableLocale =
+  | "categories"
+  | "produits"
+  | "utilisateurs"
+  | "etablissement"
+  | "sessionsCaisse"
+  | "mouvementsCaisse"
+  | "commandes"
+  | "lignesCommande"
+  | "mouvementsStock"
+  | "sessionsStock";
+
+const TOUTES_LES_TABLES: readonly TableLocale[] = [
+  "categories",
+  "produits",
+  "utilisateurs",
+  "etablissement",
+  "sessionsCaisse",
+  "mouvementsCaisse",
+  "commandes",
+  "lignesCommande",
+  "mouvementsStock",
+  "sessionsStock",
+];
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [categoriesQuery, setCategoriesQuery] = useState<QueryForTable<Categorie> | null>(null);
@@ -90,30 +127,32 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
   }, []);
 
-  const refreshLocalData = useCallback(async () => {
+  const refreshLocalData = useCallback(async (tables: readonly TableLocale[] = TOUTES_LES_TABLES) => {
     try {
-      const [categoriesResult, produitsResult, utilisateursResult, etablissementResult, sessionsCaisseResult, mouvementsCaisseResult, commandesResult, lignesCommandeResult, mouvementsStockResult, sessionsStockResult] = await Promise.all([
-        Categories.getall(),
-        Produits.getall(),
-        Utilisateurs.getall(),
-        EtablissementDb.get(),
-        Caisse.getAllSessions(),
-        Caisse.getAllMouvements(),
-        CommandeDb.getAllCommandes(),
-        CommandeDb.getAllLignesCommande(),
-        Stock.getAllMouvements(),
-        Stock.getAllSessions(),
-      ]);
-      setCategoriesQuery(new QueryForTable<Categorie>(categoriesResult));
-      setProduitsQuery(new QueryForTable<Produit>(produitsResult));
-      setUtilisateursQuery(new QueryForTable<Utilisateur>(utilisateursResult));
-      setEtablissement(etablissementResult);
-      setSessionsCaisseQuery(new QueryForTable<SessionCaisse>(sessionsCaisseResult));
-      setMouvementsCaisseQuery(new QueryForTable<MouvementCaisse>(mouvementsCaisseResult));
-      setCommandesQuery(new QueryForTable<Commande>(commandesResult));
-      setLignesCommandeQuery(new QueryForTable<LigneCommande>(lignesCommandeResult));
-      setMouvementsStockQuery(new QueryForTable<MouvementStock>(mouvementsStockResult));
-      setSessionsStockQuery(new QueryForTable<SessionStock>(sessionsStockResult));
+      await Promise.all(tables.map(async (table) => {
+        switch (table) {
+          case "categories":
+            return setCategoriesQuery(new QueryForTable<Categorie>(await Categories.getall()));
+          case "produits":
+            return setProduitsQuery(new QueryForTable<Produit>(await Produits.getall()));
+          case "utilisateurs":
+            return setUtilisateursQuery(new QueryForTable<Utilisateur>(await Utilisateurs.getall()));
+          case "etablissement":
+            return setEtablissement(await EtablissementDb.get());
+          case "sessionsCaisse":
+            return setSessionsCaisseQuery(new QueryForTable<SessionCaisse>(await Caisse.getAllSessions()));
+          case "mouvementsCaisse":
+            return setMouvementsCaisseQuery(new QueryForTable<MouvementCaisse>(await Caisse.getAllMouvements()));
+          case "commandes":
+            return setCommandesQuery(new QueryForTable<Commande>(await CommandeDb.getAllCommandes()));
+          case "lignesCommande":
+            return setLignesCommandeQuery(new QueryForTable<LigneCommande>(await CommandeDb.getAllLignesCommande()));
+          case "mouvementsStock":
+            return setMouvementsStockQuery(new QueryForTable<MouvementStock>(await Stock.getAllMouvements()));
+          case "sessionsStock":
+            return setSessionsStockQuery(new QueryForTable<SessionStock>(await Stock.getAllSessions()));
+        }
+      }));
     } catch (error) {
       handleError(error, "local data refresh");
     }
@@ -146,7 +185,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Categories.created(data);
-      await refreshLocalData();
+      await refreshLocalData(["categories"]);
       return result;
     } catch (error) {
       handleError(error, "adding categorie");
@@ -157,7 +196,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Categories.updated(data);
-      await refreshLocalData();
+      await refreshLocalData(["categories"]);
     } catch (error) {
       handleError(error, "updating categorie");
     }
@@ -167,7 +206,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Categories.deleted(id);
-      await refreshLocalData();
+      await refreshLocalData(["categories"]);
     } catch (error) {
       handleError(error, "deleting categorie");
     }
@@ -177,7 +216,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Produits.created(data);
-      await refreshLocalData();
+      await refreshLocalData(["produits"]);
       return result;
     } catch (error) {
       handleError(error, "adding produit");
@@ -188,7 +227,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Produits.updated(data);
-      await refreshLocalData();
+      await refreshLocalData(["produits"]);
     } catch (error) {
       handleError(error, "updating produit");
     }
@@ -198,7 +237,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Produits.deleted(id);
-      await refreshLocalData();
+      await refreshLocalData(["produits"]);
     } catch (error) {
       handleError(error, "deleting produit");
     }
@@ -208,7 +247,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await EtablissementDb.save(data);
-      await refreshLocalData();
+      await refreshLocalData(["etablissement"]);
     } catch (error) {
       handleError(error, "updating etablissement");
     }
@@ -218,7 +257,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Utilisateurs.created(data);
-      await refreshLocalData();
+      await refreshLocalData(["utilisateurs"]);
       return result;
     } catch (error) {
       handleError(error, "adding utilisateur");
@@ -229,7 +268,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Utilisateurs.updated(data);
-      await refreshLocalData();
+      await refreshLocalData(["utilisateurs"]);
     } catch (error) {
       handleError(error, "updating utilisateur");
     }
@@ -239,7 +278,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Utilisateurs.deleted(id);
-      await refreshLocalData();
+      await refreshLocalData(["utilisateurs"]);
     } catch (error) {
       handleError(error, "deleting utilisateur");
     }
@@ -249,7 +288,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Caisse.ouvrirSession(data);
-      await refreshLocalData();
+      await refreshLocalData(["sessionsCaisse"]);
       notifierOuvertureSessionCaisse(data.montant_ouverture);
       return result;
     } catch (error) {
@@ -261,7 +300,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Caisse.fermerSession(data);
-      await refreshLocalData();
+      await refreshLocalData(["sessionsCaisse"]);
     } catch (error) {
       handleError(error, "fermeture de la caisse");
     }
@@ -271,10 +310,30 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Caisse.ajouterMouvement(data);
-      await refreshLocalData();
+      await refreshLocalData(["mouvementsCaisse"]);
       return result;
     } catch (error) {
       handleError(error, "ajout d'un mouvement de caisse");
+    }
+  }, [clearError, handleError, refreshLocalData]);
+
+  const modifierMouvementCaisse = useCallback(async (data: { id: string; type: MouvementCaisse["type"]; montant: number; motif?: string }) => {
+    clearError();
+    try {
+      await Caisse.modifierMouvement(data);
+      await refreshLocalData(["mouvementsCaisse"]);
+    } catch (error) {
+      handleError(error, "modification du mouvement de caisse");
+    }
+  }, [clearError, handleError, refreshLocalData]);
+
+  const supprimerMouvementCaisse = useCallback(async (id: string) => {
+    clearError();
+    try {
+      await Caisse.supprimerMouvement(id);
+      await refreshLocalData(["mouvementsCaisse"]);
+    } catch (error) {
+      handleError(error, "suppression du mouvement de caisse");
     }
   }, [clearError, handleError, refreshLocalData]);
 
@@ -282,7 +341,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await CommandeDb.passerCommande(data);
-      await refreshLocalData();
+      await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
       return result;
     } catch (error) {
       handleError(error, "passer une commande");
@@ -293,7 +352,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await CommandeDb.modifierCommande(data);
-      await refreshLocalData();
+      await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
     } catch (error) {
       handleError(error, "modification de la commande");
     }
@@ -303,7 +362,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await CommandeDb.supprimerCommande(commande_id);
-      await refreshLocalData();
+      await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
     } catch (error) {
       handleError(error, "suppression de la commande");
     }
@@ -313,10 +372,13 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Stock.ouvrirSession(data);
-      await refreshLocalData();
+      await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
       return result;
     } catch (error) {
       handleError(error, "ouverture de l'inventaire");
+      // Rethrow : l'écran d'inventaire navigue en arrière après un `await` réussi.
+      // Sans ça, un échec d'écriture silencieux se présentait comme un succès.
+      throw error;
     }
   }, [clearError, handleError, refreshLocalData]);
 
@@ -324,9 +386,10 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Stock.fermerSession(data);
-      await refreshLocalData();
+      await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
     } catch (error) {
       handleError(error, "fermeture de l'inventaire");
+      throw error;
     }
   }, [clearError, handleError, refreshLocalData]);
 
@@ -334,7 +397,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       const result = await Stock.ajouterMouvement(data);
-      await refreshLocalData();
+      await refreshLocalData(["mouvementsStock", "produits"]);
       return result;
     } catch (error) {
       handleError(error, "enregistrement d'un mouvement de stock");
@@ -345,9 +408,39 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Stock.modifierSeuilAlerte(produit_id, seuil_alerte);
-      await refreshLocalData();
+      await refreshLocalData(["produits"]);
     } catch (error) {
       handleError(error, "modification du seuil d'alerte");
+    }
+  }, [clearError, handleError, refreshLocalData]);
+
+  const modifierSeuilAlerteCategorie = useCallback(async (categorie_id: string, seuil_alerte: number | null) => {
+    clearError();
+    try {
+      await Stock.modifierSeuilAlerteCategorie(categorie_id, seuil_alerte);
+      await refreshLocalData(["categories"]);
+    } catch (error) {
+      handleError(error, "modification du seuil d'alerte de la catégorie");
+    }
+  }, [clearError, handleError, refreshLocalData]);
+
+  const modifierMouvementStock = useCallback(async (data: { id: string; quantite: number; categorie_perte?: CategoriePerte; motif?: string }) => {
+    clearError();
+    try {
+      await Stock.modifierMouvement(data);
+      await refreshLocalData(["mouvementsStock", "produits"]);
+    } catch (error) {
+      handleError(error, "modification du mouvement de stock");
+    }
+  }, [clearError, handleError, refreshLocalData]);
+
+  const supprimerMouvementStock = useCallback(async (id: string) => {
+    clearError();
+    try {
+      await Stock.supprimerMouvement(id);
+      await refreshLocalData(["mouvementsStock", "produits"]);
+    } catch (error) {
+      handleError(error, "suppression du mouvement de stock");
     }
   }, [clearError, handleError, refreshLocalData]);
 
@@ -374,6 +467,8 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     ouvrirSessionCaisse,
     fermerSessionCaisse,
     ajouterMouvementCaisse,
+    modifierMouvementCaisse,
+    supprimerMouvementCaisse,
     commandesQuery,
     lignesCommandeQuery,
     passerCommande,
@@ -384,7 +479,10 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     ouvrirSessionStock,
     fermerSessionStock,
     ajouterMouvementStock,
+    modifierMouvementStock,
+    supprimerMouvementStock,
     modifierSeuilAlerteProduit,
+    modifierSeuilAlerteCategorie,
   }), [
     categoriesQuery,
     produitsQuery,
@@ -408,6 +506,8 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     ouvrirSessionCaisse,
     fermerSessionCaisse,
     ajouterMouvementCaisse,
+    modifierMouvementCaisse,
+    supprimerMouvementCaisse,
     commandesQuery,
     lignesCommandeQuery,
     passerCommande,
@@ -418,7 +518,10 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     ouvrirSessionStock,
     fermerSessionStock,
     ajouterMouvementStock,
+    modifierMouvementStock,
+    supprimerMouvementStock,
     modifierSeuilAlerteProduit,
+    modifierSeuilAlerteCategorie,
   ]);
 
   return (
