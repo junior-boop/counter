@@ -17,7 +17,7 @@ import theme from "../../constants/constant-style";
 
 export default function SessionDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, ajouterMouvementCaisse, modifierMouvementCaisse, supprimerMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
+    const { sessionsCaisseQuery, sessionsStockQuery, mouvementsCaisseQuery, commandesQuery, lignesCommandeQuery, categoriesQuery, produitsQuery, produitsActifsQuery, ajouterMouvementCaisse, modifierMouvementCaisse, supprimerMouvementCaisse, fermerSessionCaisse, passerCommande, modifierCommande, supprimerCommande } = useDatabase();
     const { session: utilisateur } = useAuth();
     const { showError, confirm } = useAlert();
 
@@ -370,6 +370,7 @@ export default function SessionDetailScreen() {
                 panierInitial={panier}
                 categories={categoriesActivite}
                 produitsQuery={produitsQuery!}
+                produitsActifsQuery={produitsActifsQuery}
                 isSubmitting={isSubmitting}
                 onClose={closeCommandeModal}
                 onSubmit={handlePasserCommande}
@@ -440,6 +441,7 @@ const CommandeModal = memo(function CommandeModal({
     panierInitial,
     categories,
     produitsQuery,
+    produitsActifsQuery,
     isSubmitting,
     onClose,
     onSubmit,
@@ -449,6 +451,7 @@ const CommandeModal = memo(function CommandeModal({
     panierInitial: Record<string, number> | null;
     categories: CategorieLite[];
     produitsQuery: ProduitsQuery;
+    produitsActifsQuery: ReturnType<typeof useDatabase>["produitsActifsQuery"];
     isSubmitting: boolean;
     onClose: () => void;
     onSubmit: (lignes: LigneCommande[]) => void;
@@ -464,15 +467,25 @@ const CommandeModal = memo(function CommandeModal({
     // Catalogue trié UNE fois par changement de données, plus à chaque appui.
     // Avant : findBy + slice + sort(localeCompare) pour chaque catégorie à
     // chaque rendu — c'était la cause principale de la lenteur.
+    // Seuls les produits réapprovisionnés il y a moins de 2 semaines sont
+    // vendables ici (voir `produits_actifs` / stock.purgerProduitsInactifs) :
+    // évite de proposer à la vente un produit dont le stock affiché est en
+    // réalité obsolète, jamais recompté depuis longtemps.
+    const produitsActifs = useMemo(
+        () => new Set((produitsActifsQuery?.findAll() ?? []).map((p) => p.id)),
+        [produitsActifsQuery]
+    );
+
     const catalogue = useMemo(
         () =>
             categories.map((categorie) => ({
                 categorie,
                 produits: (produitsQuery?.findBy("categorie_id", categorie.id) ?? [])
+                    .filter((p) => produitsActifs.has(p.id))
                     .slice()
                     .sort((a, b) => comparerNoms(a.nom, b.nom)),
             })),
-        [categories, produitsQuery]
+        [categories, produitsQuery, produitsActifs]
     );
 
     // Accès O(1) aux produits au lieu de findById répété dans les boucles.

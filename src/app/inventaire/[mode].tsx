@@ -24,7 +24,7 @@ export default function InventaireScreen() {
     const activite: TypeActivite | null = params.activite === "bar" || params.activite === "restaurant" ? params.activite : null;
     const sessionCaisseId = params.sessionCaisseId;
 
-    const { categoriesQuery, produitsQuery, sessionsStockQuery, mouvementsStockQuery, ouvrirSessionStock, fermerSessionStock } = useDatabase();
+    const { categoriesQuery, produitsQuery, sessionsStockQuery, mouvementsStockQuery, produitsActifsQuery, ouvrirSessionStock, fermerSessionStock } = useDatabase();
     const { session } = useAuth();
     const { showError } = useAlert();
     const insets = useSafeAreaInsets();
@@ -46,17 +46,12 @@ export default function InventaireScreen() {
         .filter((s) => s.statut === "ouverte")
         .sort((a, b) => b.date_ouverture.localeCompare(a.date_ouverture))[0] ?? null;
 
-    // À la fermeture, on ne recompte que ce qui a bougé (réapprovisionné) dans la
-    // session, ou ce qui avait déjà une quantité en stock : un produit avec du stock
-    // restant peut avoir subi une perte même sans nouvelle livraison.
-    const produitsApprovisionnes = new Set<string>();
-    if (mode === "fermeture" && sessionOuverte) {
-        for (const mouvement of mouvementsStockQuery?.findBy("session_id", sessionOuverte.id) ?? []) {
-            if (mouvement.type === "reapprovisionnement") produitsApprovisionnes.add(mouvement.produit_id);
-        }
-    }
-    const estEligible = (produit: Produit) =>
-        mode === "ouverture" || produitsApprovisionnes.has(produit.id) || (produit.stock_actuel ?? 0) > 0;
+    // Ouverture comme fermeture : seuls les produits réapprovisionnés il y a
+    // moins de 2 semaines sont comptables (voir `produits_actifs` /
+    // stock.purgerProduitsInactifs). Un produit jamais réapprovisionné
+    // n'apparaît qu'après son premier réapprovisionnement.
+    const produitsActifs = new Set((produitsActifsQuery?.findAll() ?? []).map((p) => p.id));
+    const estEligible = (produit: Produit) => produitsActifs.has(produit.id);
 
     const tousProduits = categories
         .flatMap((c) => produitsQuery?.findBy("categorie_id", c.id) ?? [])
@@ -298,8 +293,8 @@ export default function InventaireScreen() {
                 }}
                 ListEmptyComponent={
                     <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>
-                        {mode === "fermeture" && filtre === ""
-                            ? "Aucun produit n'a été réapprovisionné durant cette session."
+                        {filtre === ""
+                            ? "Aucun produit n'a été réapprovisionné récemment."
                             : "Aucun produit ne correspond."}
                     </Text>
                 }

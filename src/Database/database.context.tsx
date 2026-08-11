@@ -73,17 +73,21 @@ const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined
  * l'écriture) au stock d'après (relu en base, car l'état React n'est pas encore
  * à jour juste après refreshLocalData). Ne notifie que le franchissement du
  * seuil vers le bas, jamais un produit déjà bas — sinon chaque mouvement sur un
- * produit en rupture spammerait une notification.
+ * produit en rupture spammerait une notification. Un produit hors du cache
+ * `produits_actifs` (non réapprovisionné depuis 2 semaines) est exclu : il
+ * n'est plus suivi activement, pas d'alerte à générer pour lui.
  */
 async function verifierSeuilsFranchis(
   produitIds: string[],
   stockAvant: Map<string, number | null | undefined>,
-  categoriesQuery: QueryForTable<Categorie> | null
+  categoriesQuery: QueryForTable<Categorie> | null,
+  produitsActifsIds: Set<string>
 ) {
   const uniqueIds = Array.from(new Set(produitIds));
   if (uniqueIds.length === 0) return;
   const produitsApres = await Produits.getall();
   for (const id of uniqueIds) {
+    if (!produitsActifsIds.has(id)) continue;
     const produit = produitsApres.find((p) => p.id === id);
     if (!produit) continue;
     const categorie = categoriesQuery?.findById(produit.categorie_id) ?? null;
@@ -145,6 +149,13 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [produitsActifsQuery, setProduitsActifsQuery] = useState<QueryForTable<ProduitActif> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<DatabaseError | null>(null);
+
+  // Set des produits "actifs" (réapprovisionnés depuis moins de 2 semaines) :
+  // base des notifications de seuil, recalculé seulement quand la table change.
+  const produitsActifsIds = useMemo(
+    () => new Set((produitsActifsQuery?.findAll() ?? []).map((p) => p.id)),
+    [produitsActifsQuery]
+  );
 
   const handleError = useCallback((error: unknown, operation: string) => {
     const dbError: DatabaseError = {
@@ -380,12 +391,12 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await CommandeDb.passerCommande(data);
       await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
-      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery, produitsActifsIds);
       return result;
     } catch (error) {
       handleError(error, "passer une commande");
     }
-  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery, produitsActifsIds]);
 
   const modifierCommande = useCallback(async (data: { commande_id: string; lignes: { produit: Produit; quantite: number }[] }) => {
     clearError();
@@ -394,11 +405,11 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       await CommandeDb.modifierCommande(data);
       await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
-      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery, produitsActifsIds);
     } catch (error) {
       handleError(error, "modification de la commande");
     }
-  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery, produitsActifsIds]);
 
   const supprimerCommande = useCallback(async (commande_id: string) => {
     clearError();
@@ -417,7 +428,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await Stock.ouvrirSession(data);
       await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
-      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery, produitsActifsIds);
       return result;
     } catch (error) {
       handleError(error, "ouverture de l'inventaire");
@@ -425,7 +436,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       // Sans ça, un échec d'écriture silencieux se présentait comme un succès.
       throw error;
     }
-  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery, produitsActifsIds]);
 
   const fermerSessionStock = useCallback(async (data: { id: string; utilisateur_fermeture_id: string; comptages: { produit_id: string; quantite: number }[] }) => {
     clearError();
@@ -434,25 +445,25 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       await Stock.fermerSession(data);
       await refreshLocalData(["sessionsStock", "mouvementsStock", "produits"]);
-      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery);
+      verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery, produitsActifsIds);
     } catch (error) {
       handleError(error, "fermeture de l'inventaire");
       throw error;
     }
-  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery, produitsActifsIds]);
 
   const ajouterMouvementStock = useCallback(async (data: { session_id: string; produit_id: string; type: TypeMouvementStock; quantite: number; categorie_perte?: CategoriePerte; motif?: string; utilisateur_id: string }) => {
     clearError();
     const stockAvant = new Map([[data.produit_id, produitsQuery?.findById(data.produit_id)?.stock_actuel]]);
     try {
       const result = await Stock.ajouterMouvement(data);
-      await refreshLocalData(["mouvementsStock", "produits"]);
-      verifierSeuilsFranchis([data.produit_id], stockAvant, categoriesQuery);
+      await refreshLocalData(["mouvementsStock", "produits", "produitsActifs"]);
+      verifierSeuilsFranchis([data.produit_id], stockAvant, categoriesQuery, produitsActifsIds);
       return result;
     } catch (error) {
       handleError(error, "enregistrement d'un mouvement de stock");
     }
-  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery]);
+  }, [clearError, handleError, refreshLocalData, produitsQuery, categoriesQuery, produitsActifsIds]);
 
   const modifierSeuilAlerteProduit = useCallback(async (produit_id: string, seuil_alerte: number | null) => {
     clearError();
@@ -478,7 +489,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     clearError();
     try {
       await Stock.modifierMouvement(data);
-      await refreshLocalData(["mouvementsStock", "produits"]);
+      await refreshLocalData(["mouvementsStock", "produits", "produitsActifs"]);
     } catch (error) {
       handleError(error, "modification du mouvement de stock");
     }
