@@ -2,9 +2,10 @@ import { QueryForTable } from "../../SimpleORM";
 import * as Caisse from "./caisse";
 import * as Categories from "./categories";
 import * as CommandeDb from "./commande";
-import { CategoriePerte, Categorie, Commande, Etablissement, LigneCommande, MouvementCaisse, MouvementStock, Produit, ProduitActif, SessionCaisse, SessionStock, TypeActivite, TypeMouvementStock, Utilisateur } from "./db";
+import { CategoriePerte, Categorie, Commande, Etablissement, LigneCommande, MouvementCaisse, MouvementStock, Produit, ProduitActif, Rapport, SessionCaisse, SessionStock, TypeActivite, TypeMouvementStock, Utilisateur } from "./db";
 import * as EtablissementDb from "./etablissement";
 import * as Produits from "./produits";
+import * as RapportDb from "./rapport";
 import * as Stock from "./stock";
 import * as Utilisateurs from "./utilisateurs";
 import { notifierOuvertureSessionCaisse, notifierStockBas } from "../lib/notifications";
@@ -64,6 +65,9 @@ interface DatabaseContextType {
   modifierSeuilAlerteProduit: (produit_id: string, seuil_alerte: number | null) => Promise<void>;
   modifierSeuilAlerteCategorie: (categorie_id: string, seuil_alerte: number | null) => Promise<void>;
   produitsActifsQuery: QueryForTable<ProduitActif> | null;
+  rapportsQuery: QueryForTable<Rapport> | null;
+  genererRapportDeLaJournee: () => Promise<string>;
+  genererRapportPourSessionCaisse: (sessionId: string) => Promise<string>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -119,7 +123,8 @@ type TableLocale =
   | "lignesCommande"
   | "mouvementsStock"
   | "sessionsStock"
-  | "produitsActifs";
+  | "produitsActifs"
+  | "rapports";
 
 const TOUTES_LES_TABLES: readonly TableLocale[] = [
   "categories",
@@ -133,6 +138,7 @@ const TOUTES_LES_TABLES: readonly TableLocale[] = [
   "mouvementsStock",
   "sessionsStock",
   "produitsActifs",
+  "rapports",
 ];
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
@@ -147,6 +153,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [mouvementsStockQuery, setMouvementsStockQuery] = useState<QueryForTable<MouvementStock> | null>(null);
   const [sessionsStockQuery, setSessionsStockQuery] = useState<QueryForTable<SessionStock> | null>(null);
   const [produitsActifsQuery, setProduitsActifsQuery] = useState<QueryForTable<ProduitActif> | null>(null);
+  const [rapportsQuery, setRapportsQuery] = useState<QueryForTable<Rapport> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<DatabaseError | null>(null);
 
@@ -197,6 +204,8 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
             return setSessionsStockQuery(new QueryForTable<SessionStock>(await Stock.getAllSessions()));
           case "produitsActifs":
             return setProduitsActifsQuery(new QueryForTable<ProduitActif>(await Stock.getProduitsActifs()));
+          case "rapports":
+            return setRapportsQuery(new QueryForTable<Rapport>(await RapportDb.getAllRapports()));
         }
       }));
     } catch (error) {
@@ -214,7 +223,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       await Caisse.createTable();
       await CommandeDb.createTable();
       await Stock.createTable();
+      await Stock.initialiserProduitsActifsSiVide();
       await Stock.purgerProduitsInactifs();
+      await RapportDb.createTable();
       clearError();
       await refreshLocalData();
     } catch (error) {
@@ -505,6 +516,36 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [clearError, handleError, refreshLocalData]);
 
+  const genererRapportPourSessionCaisse = useCallback(async (sessionId: string): Promise<string> => {
+    clearError();
+    const session = sessionsCaisseQuery?.findById(sessionId);
+    if (!session || session.statut !== "fermee") {
+      handleError(new Error("Session de caisse introuvable ou non fermée."), "génération du rapport");
+      throw new Error("Session de caisse introuvable ou non fermée");
+    }
+    try {
+      const rapport = await RapportDb.genererRapportPourSession(session);
+      await refreshLocalData(["rapports"]);
+      return rapport.id;
+    } catch (error) {
+      handleError(error, "génération du rapport");
+      throw error;
+    }
+  }, [clearError, handleError, refreshLocalData, sessionsCaisseQuery]);
+
+  const genererRapportDeLaJournee = useCallback(async (): Promise<string> => {
+    const sessionsFermees = (sessionsCaisseQuery?.findAll() ?? [])
+      .filter((s) => s.statut === "fermee")
+      .sort((a, b) => (b.date_fermeture ?? "").localeCompare(a.date_fermeture ?? ""));
+    const derniere = sessionsFermees[0];
+    if (!derniere) {
+      clearError();
+      handleError(new Error("Aucune session de caisse fermée."), "génération du rapport");
+      throw new Error("Aucune session de caisse fermée");
+    }
+    return genererRapportPourSessionCaisse(derniere.id);
+  }, [clearError, handleError, sessionsCaisseQuery, genererRapportPourSessionCaisse]);
+
   const contextValue = useMemo(() => ({
     categoriesQuery,
     produitsQuery,
@@ -545,6 +586,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     modifierSeuilAlerteProduit,
     modifierSeuilAlerteCategorie,
     produitsActifsQuery,
+    rapportsQuery,
+    genererRapportDeLaJournee,
+    genererRapportPourSessionCaisse,
   }), [
     categoriesQuery,
     produitsQuery,
@@ -585,6 +629,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     modifierSeuilAlerteProduit,
     modifierSeuilAlerteCategorie,
     produitsActifsQuery,
+    rapportsQuery,
+    genererRapportDeLaJournee,
+    genererRapportPourSessionCaisse,
   ]);
 
   return (

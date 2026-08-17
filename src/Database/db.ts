@@ -121,6 +121,26 @@ export interface ProduitActif extends DatabaseRow {
   derniere_activite: string;
 }
 
+/**
+ * Bilan généré à la clôture d'une session de caisse. Les montants
+ * d'ouverture/fermeture/écart restent sur `SessionCaisse` (pas de
+ * duplication) — le rapport ne stocke que les agrégats propres à la session
+ * (voir `Database/rapport.ts:genererRapportPourSession`).
+ */
+export interface Rapport extends DatabaseRow {
+  id: string;
+  session_caisse_id: string; // un seul rapport par session fermée
+  date_generation: string;
+  total_entrees: number;
+  total_sorties: number;
+  montant_reappro: number;
+  nombre_reappro: number;
+  nombre_commandes: number;
+  montant_commandes: number;
+  quantite_perdue: number;
+  nombre_ecarts_inventaire: number;
+}
+
 const orm = new SimpleORM("vms-counter.db");
 const factory = new ModelFactory(orm);
 
@@ -196,6 +216,20 @@ export const LigneCommandeModel = factory.createModel<LigneCommande>("lignes_com
 export const ProduitActifModel = factory.createModel<ProduitActif>("produits_actifs", {
   id: "TEXT PRIMARY KEY",
   derniere_activite: "TEXT NOT NULL",
+});
+
+export const RapportModel = factory.createModel<Rapport>("rapports", {
+  id: "TEXT PRIMARY KEY",
+  session_caisse_id: "TEXT NOT NULL",
+  date_generation: "TEXT NOT NULL",
+  total_entrees: "REAL NOT NULL",
+  total_sorties: "REAL NOT NULL",
+  montant_reappro: "REAL NOT NULL",
+  nombre_reappro: "INTEGER NOT NULL",
+  nombre_commandes: "INTEGER NOT NULL",
+  montant_commandes: "REAL NOT NULL",
+  quantite_perdue: "REAL NOT NULL",
+  nombre_ecarts_inventaire: "INTEGER NOT NULL",
 });
 
 export const SessionStockModel = factory.createModel<SessionStock>("sessions_stock", {

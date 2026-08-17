@@ -252,6 +252,24 @@ export async function getProduitsActifs(): Promise<ProduitActif[]> {
 }
 
 /**
+ * Amorce le cache `produits_actifs` s'il est vide (ex : premier lancement
+ * après l'ajout de cette fonctionnalité) avec les produits ayant déjà un
+ * stock, pour ne pas masquer un produit existant simplement parce qu'il n'a
+ * jamais généré de mouvement de réapprovisionnement.
+ */
+export async function initialiserProduitsActifsSiVide(): Promise<void> {
+  const actifs = await ProduitActifModel.findAll();
+  if (actifs.length > 0) return;
+  const produits = await ProduitModel.findAll();
+  const derniere_activite = new Date().toISOString();
+  for (const produit of produits) {
+    if ((produit.stock_actuel ?? 0) > 0) {
+      await ProduitActifModel.create({ id: produit.id, derniere_activite });
+    }
+  }
+}
+
+/**
  * Retire de la liste des "produits actifs" ceux qui n'ont pas été
  * réapprovisionnés depuis 2 semaines. Appelé à l'ouverture de l'app et par
  * la tâche en arrière-plan `purge-produits-inactifs` (`src/lib/backgroundTasks.ts`).
