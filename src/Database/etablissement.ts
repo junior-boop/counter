@@ -11,6 +11,11 @@ export async function createTable() {
   } catch {
     // colonne déjà présente
   }
+  try {
+    await EtablissementModel.orm.run("ALTER TABLE etablissement ADD COLUMN server_id TEXT");
+  } catch {
+    // colonne déjà présente
+  }
 }
 
 export async function get(): Promise<Etablissement | null> {
@@ -19,4 +24,8 @@ export async function get(): Promise<Etablissement | null> {
 
 export async function save(data: Omit<Etablissement, "id">): Promise<Etablissement> {
   return await EtablissementModel.upsert({ id: SINGLETON_ID, ...data });
+}
+
+export async function lierServeur(server_id: string): Promise<Etablissement | null> {
+  return await EtablissementModel.update(SINGLETON_ID, { server_id });
 }

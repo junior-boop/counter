@@ -17,6 +17,8 @@ export interface Etablissement extends DatabaseRow {
   nom: string;
   type: TypeEtablissement;
   commande_temps_reel_active: boolean;
+  /** Id de l'établissement côté serveur patron, si lié via un code de pairing. */
+  server_id?: string | null;
 }
 
 export interface Produit extends DatabaseRow {
@@ -163,6 +165,7 @@ export const EtablissementModel = factory.createModel<Etablissement>("etablissem
   nom: "TEXT NOT NULL",
   type: "TEXT NOT NULL",
   commande_temps_reel_active: "INTEGER NOT NULL",
+  server_id: "TEXT",
 });
 
 export const UtilisateurModel = factory.createModel<Utilisateur>("utilisateurs", {

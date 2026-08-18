@@ -89,6 +89,25 @@ export default function SettingsScreen() {
                                 </TouchableOpacity>
                             </View>
                         </View>
+
+                        <Titre titre="Synchronisation" />
+                        <View style={{ paddingHorizontal: theme.screenPadding }}>
+                            <Text style={{ fontSize: theme.size_one, opacity: 0.5, marginBottom: theme.internal_padding_2 }}>
+                                Liez cet établissement à un compte patron pour suivre son activité à distance.
+                            </Text>
+                            <View style={{ gap: 3, overflow: 'hidden', borderRadius: theme.internal_radius, borderColor: 'transparent', borderWidth: 1 }}>
+                                {etablissement?.server_id ? (
+                                    <View style={styles.button}>
+                                        <Text style={{ fontSize: theme.size_two }}>Lié à un compte patron</Text>
+                                    </View>
+                                ) : (
+                                    <TouchableOpacity style={styles.button} onPress={() => router.push("/lier-etablissement")}>
+                                        <Text style={{ fontSize: theme.size_two }}>Lier à un établissement du patron</Text>
+                                        <ChevronRight color="black" size={20} strokeWidth={1} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
                     </>
                 )}
 

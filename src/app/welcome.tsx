@@ -52,6 +52,13 @@ export default function WelcomeScreen() {
                         <Text style={{ fontSize: theme.size_one, color: "white", opacity: 0.8 }}>Connectez-vous avec votre nom et votre code PIN</Text>
                     </TouchableOpacity>
                 )}
+
+                <TouchableOpacity
+                    onPress={() => router.push("/patron/login")}
+                    style={{ borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, alignItems: "center", justifyContent: "center", marginTop: theme.internal_padding }}
+                >
+                    <Text style={{ fontSize: theme.size_two, opacity: 0.5, textDecorationLine: "underline" }}>Je suis patron, suivre mes établissements</Text>
+                </TouchableOpacity>
             </View>
         </SafeAreaView>
     );

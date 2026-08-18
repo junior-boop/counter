@@ -8,6 +8,7 @@ import * as Produits from "./produits";
 import * as RapportDb from "./rapport";
 import * as Stock from "./stock";
 import * as Utilisateurs from "./utilisateurs";
+import * as Sync from "../Sync/rapportSync";
 import { notifierOuvertureSessionCaisse, notifierStockBas } from "../lib/notifications";
 import React, {
   createContext,
@@ -68,6 +69,7 @@ interface DatabaseContextType {
   rapportsQuery: QueryForTable<Rapport> | null;
   genererRapportDeLaJournee: () => Promise<string>;
   genererRapportPourSessionCaisse: (sessionId: string) => Promise<string>;
+  refreshLocalData: (tables?: readonly TableLocale[]) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -526,12 +528,13 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       const rapport = await RapportDb.genererRapportPourSession(session);
       await refreshLocalData(["rapports"]);
+      void Sync.pousserRapport(rapport, session, etablissement?.server_id);
       return rapport.id;
     } catch (error) {
       handleError(error, "génération du rapport");
       throw error;
     }
-  }, [clearError, handleError, refreshLocalData, sessionsCaisseQuery]);
+  }, [clearError, handleError, refreshLocalData, sessionsCaisseQuery, etablissement]);
 
   const genererRapportDeLaJournee = useCallback(async (): Promise<string> => {
     const sessionsFermees = (sessionsCaisseQuery?.findAll() ?? [])
@@ -589,6 +592,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     rapportsQuery,
     genererRapportDeLaJournee,
     genererRapportPourSessionCaisse,
+    refreshLocalData,
   }), [
     categoriesQuery,
     produitsQuery,
@@ -632,6 +636,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     rapportsQuery,
     genererRapportDeLaJournee,
     genererRapportPourSessionCaisse,
+    refreshLocalData,
   ]);
 
   return (
