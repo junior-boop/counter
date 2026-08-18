@@ -1,0 +1,214 @@
+### Tests du serveur vms-counter (Cloudflare Worker déployé)
+### À exécuter avec l'extension VSCode "REST Client" (humao.rest-client)
+### Cliquer sur "Send Request" au-dessus de chaque requête, dans l'ordre.
+
+@baseUrl = https://counterserver.godigital145.workers.dev
+@email = patron.{{$timestamp}}@test.com
+@password = motdepasse123
+
+### 0. Health check
+GET {{baseUrl}}/
+
+
+### ============================================================
+### 1. Auth — signup / login
+### ============================================================
+
+### 1.1 Signup — crée un nouveau compte patron
+# @name signup
+POST {{baseUrl}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### 1.2 Signup avec un email déjà utilisé -> 400
+POST {{baseUrl}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### 1.3 Signup sans password -> 400
+POST {{baseUrl}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "sans-password@test.com"
+}
+
+### 1.4 Login avec les bons identifiants
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### 1.5 Login avec un mauvais mot de passe -> 401
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "mauvais-mot-de-passe"
+}
+
+@patronToken = {{login.response.body.token}}
+
+
+### ============================================================
+### 2. Établissements (JWT patron requis)
+### ============================================================
+
+### 2.1 Sans token -> 401
+GET {{baseUrl}}/etablissements
+
+### 2.2 Créer un établissement
+# @name createEtab
+POST {{baseUrl}}/etablissements
+Content-Type: application/json
+Authorization: Bearer {{patronToken}}
+
+{
+  "nom": "Le Bar Test",
+  "type": "bar"
+}
+
+@etabId = {{createEtab.response.body.id}}
+
+### 2.3 Créer un établissement sans nom -> 400
+POST {{baseUrl}}/etablissements
+Content-Type: application/json
+Authorization: Bearer {{patronToken}}
+
+{
+  "type": "bar"
+}
+
+### 2.4 Lister mes établissements
+GET {{baseUrl}}/etablissements
+Authorization: Bearer {{patronToken}}
+
+### 2.5 Détail d'un établissement
+GET {{baseUrl}}/etablissements/{{etabId}}
+Authorization: Bearer {{patronToken}}
+
+### 2.6 Détail d'un établissement inexistant -> 404
+GET {{baseUrl}}/etablissements/id-inexistant
+Authorization: Bearer {{patronToken}}
+
+### 2.7 Régénérer un code de pairing
+# @name regenPairing
+POST {{baseUrl}}/etablissements/{{etabId}}/pairing-code
+Authorization: Bearer {{patronToken}}
+
+@pairingCode = {{regenPairing.response.body.pairing_code}}
+
+### 2.8 Rapports de l'établissement (vide pour l'instant)
+GET {{baseUrl}}/etablissements/{{etabId}}/rapports
+Authorization: Bearer {{patronToken}}
+
+
+### ============================================================
+### 3. Pairing (échange du code -> device token)
+### ============================================================
+
+### 3.1 Code invalide -> 400
+POST {{baseUrl}}/pairing/exchange
+Content-Type: application/json
+
+{
+  "pairing_code": "CODE-INVALIDE"
+}
+
+### 3.2 Échanger le code contre un device token
+# @name exchange
+POST {{baseUrl}}/pairing/exchange
+Content-Type: application/json
+
+{
+  "pairing_code": "{{pairingCode}}"
+}
+
+@deviceToken = {{exchange.response.body.device_token}}
+
+### 3.3 Ré-échanger le même code -> 400 (usage unique, il a été invalidé)
+POST {{baseUrl}}/pairing/exchange
+Content-Type: application/json
+
+{
+  "pairing_code": "{{pairingCode}}"
+}
+
+
+### ============================================================
+### 4. Rapports (device token requis)
+### ============================================================
+
+### 4.1 Sans token -> 401
+POST {{baseUrl}}/rapports
+Content-Type: application/json
+
+{
+  "session_caisse_id": "session-1"
+}
+
+### 4.2 Pousser un rapport
+# @name pushRapport
+POST {{baseUrl}}/rapports
+Content-Type: application/json
+Authorization: Bearer {{deviceToken}}
+
+{
+  "session_caisse_id": "session-test-1",
+  "local_rapport_id": "local-rapport-1",
+  "date_generation": "2026-08-18T10:00:00.000Z",
+  "total_entrees": 120,
+  "total_sorties": 95,
+  "montant_reappro": 50000,
+  "nombre_reappro": 3,
+  "nombre_commandes": 42,
+  "montant_commandes": 315000,
+  "quantite_perdue": 2,
+  "nombre_ecarts_inventaire": 1,
+  "session_date_ouverture": "2026-08-18T07:00:00.000Z",
+  "session_date_fermeture": "2026-08-18T19:00:00.000Z",
+  "montant_ouverture": 20000,
+  "montant_fermeture": 285000,
+  "ecart": -5000
+}
+
+### 4.3 Repousser le même rapport (même session_caisse_id) -> upsert, pas de doublon
+POST {{baseUrl}}/rapports
+Content-Type: application/json
+Authorization: Bearer {{deviceToken}}
+
+{
+  "session_caisse_id": "session-test-1",
+  "local_rapport_id": "local-rapport-1",
+  "date_generation": "2026-08-18T10:05:00.000Z",
+  "total_entrees": 130,
+  "total_sorties": 100,
+  "montant_reappro": 50000,
+  "nombre_reappro": 3,
+  "nombre_commandes": 45,
+  "montant_commandes": 330000,
+  "quantite_perdue": 2,
+  "nombre_ecarts_inventaire": 1,
+  "session_date_ouverture": "2026-08-18T07:00:00.000Z",
+  "session_date_fermeture": "2026-08-18T19:00:00.000Z",
+  "montant_ouverture": 20000,
+  "montant_fermeture": 285000,
+  "ecart": -5000
+}
+
+### 4.4 Vérifier côté patron : un seul rapport (mis à jour, pas dupliqué)
+GET {{baseUrl}}/etablissements/{{etabId}}/rapports
+Authorization: Bearer {{patronToken}}

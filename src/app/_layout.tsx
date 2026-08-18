@@ -34,12 +34,10 @@ function RootNavigator() {
       <Stack.Protected guard={!!session && hasProduits}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="etablissement" />
-        <Stack.Screen name="utilisateurs" />
         <Stack.Screen name="activite/[type]" />
         <Stack.Screen name="session/[id]" />
         <Stack.Screen name="session-stock/[id]" />
         <Stack.Screen name="inventaire/[mode]" />
-        <Stack.Screen name="lier-etablissement" />
       </Stack.Protected>
       <Stack.Protected guard={!!session && !hasProduits}>
         <Stack.Screen name="produits-requis" />

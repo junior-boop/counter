@@ -4,14 +4,13 @@ import { useDatabase } from "@/Database/database.context";
 import { ApiError } from "@/lib/api";
 import * as Sync from "@/Sync/pairing";
 import { router } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
 import { useState } from "react";
 import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import theme from "../constants/constant-style";
+import theme from "../../constants/constant-style";
 
-export default function LierEtablissementScreen() {
-    const { showError, showSuccess } = useAlert();
+export default function OnboardingPairingScreen() {
+    const { showError } = useAlert();
     const { refreshLocalData } = useDatabase();
     const [code, setCode] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,11 +23,10 @@ export default function LierEtablissementScreen() {
         setIsSubmitting(true);
         try {
             await Sync.pairEtablissement(code.trim().toUpperCase());
-            await refreshLocalData(["etablissement"]);
-            showSuccess("Établissement lié avec succès.");
-            router.back();
+            await refreshLocalData(["etablissement", "utilisateurs"]);
+            router.replace("/login");
         } catch (error) {
-            showError(error instanceof ApiError ? error.message : "Liaison impossible. Vérifiez le code.");
+            showError(error instanceof ApiError ? error.message : "Code invalide ou expiré.");
         } finally {
             setIsSubmitting(false);
         }
@@ -37,18 +35,13 @@ export default function LierEtablissementScreen() {
     return (
         <SafeAreaView style={{ flex: 1 }}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-                <View style={{ height: theme.headerHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding_2 }}>
-                    <TouchableOpacity onPress={() => router.back()}>
-                        <ArrowLeft color="black" size={22} strokeWidth={1.5} />
-                    </TouchableOpacity>
-                    <Text style={{ fontSize: theme.size_three }}>Lier à un compte patron</Text>
+                <View style={{ height: theme.headerHeight, justifyContent: "center", paddingHorizontal: theme.screenPadding }}>
+                    <Text style={{ fontSize: theme.size_four }}>Lier cet établissement</Text>
+                    <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>Saisissez le code fourni par le patron</Text>
                 </View>
 
                 <ScrollView style={{ flex: 1 }}>
                     <View style={{ paddingHorizontal: theme.screenPadding, paddingTop: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                        <Text style={{ fontSize: theme.size_two, opacity: 0.5, marginBottom: theme.internal_padding_2 }}>
-                            Saisissez le code de pairing généré par le patron pour cet établissement.
-                        </Text>
                         <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: theme.internal_padding }}>
                             <TextInput
                                 value={code}

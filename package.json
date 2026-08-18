@@ -29,6 +29,7 @@
     "expo-task-manager": "~57.0.9",
     "expo-updates": "~57.0.8",
     "expo-web-browser": "~57.0.1",
+    "js-sha256": "^1.0.0",
     "lucide-react-native": "^1.25.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

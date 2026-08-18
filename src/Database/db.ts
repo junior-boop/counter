@@ -64,8 +64,14 @@ export interface MouvementStock extends DatabaseRow {
 export interface Utilisateur extends DatabaseRow {
   id: string;
   nom: string;
-  code: string;
+  code: string; // legacy PIN ; pour un employé synchronisé = telephone
   role: Role;
+  telephone?: string | null;
+  server_employe_id?: string | null;
+  password_verifier?: string | null;
+  password_salt_local?: string | null;
+  /** = password_updated_at côté serveur au moment où le vérificateur local a été dérivé */
+  password_synced_version?: string | null;
 }
 
 export type StatutSessionCaisse = "ouverte" | "fermee";
@@ -173,6 +179,11 @@ export const UtilisateurModel = factory.createModel<Utilisateur>("utilisateurs",
   nom: "TEXT NOT NULL",
   code: "TEXT NOT NULL UNIQUE",
   role: "TEXT NOT NULL",
+  telephone: "TEXT",
+  server_employe_id: "TEXT",
+  password_verifier: "TEXT",
+  password_salt_local: "TEXT",
+  password_synced_version: "TEXT",
 });
 
 export const SessionCaisseModel = factory.createModel<SessionCaisse>("sessions_caisse", {

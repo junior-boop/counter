@@ -18,29 +18,17 @@ export default function WelcomeScreen() {
                     <Text style={{ fontSize: theme.size_two, opacity: 0.5, textAlign: "center" }}>Gérez votre bar ou restaurant simplement.</Text>
                 </View>
 
-                {!hasAccount && (<View style={{ gap: 8 }}>
+                {!hasAccount && (
                     <TouchableOpacity
-                        onPress={() => router.push("/onboarding/compte")}
+                        onPress={() => router.push("/onboarding/pairing")}
                         style={{ backgroundColor: "white", borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, paddingHorizontal: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                     >
                         <View style={{ gap: 5, width: "80%" }} >
-                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Créer un compte</Text>
-                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Configurez votre établissement et devenez propriétaire</Text>
-                        </View>
-                        <ChevronRight color="black" size={20} strokeWidth={1} />
-
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => router.push("/login")}
-                        style={{ backgroundColor: "white", borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, paddingHorizontal: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                    >
-                        <View style={{ gap: 5, width: "80%" }} >
-                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Se connecter</Text>
-                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Vous avez déjà un compte dans l'application</Text>
+                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>J'ai un code de pairing</Text>
+                            <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Liez cet appareil à un établissement de votre patron</Text>
                         </View>
                         <ChevronRight color="black" size={20} strokeWidth={1} />
                     </TouchableOpacity>
-                </View>
                 )}
 
                 {hasAccount && (
@@ -49,7 +37,7 @@ export default function WelcomeScreen() {
                         style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, gap: 5 }}
                     >
                         <Text style={{ fontSize: theme.size_two, color: "white", fontWeight: "bold" }}>J'ai déjà un compte</Text>
-                        <Text style={{ fontSize: theme.size_one, color: "white", opacity: 0.8 }}>Connectez-vous avec votre nom et votre code PIN</Text>
+                        <Text style={{ fontSize: theme.size_one, color: "white", opacity: 0.8 }}>Connectez-vous avec votre numéro et votre mot de passe</Text>
                     </TouchableOpacity>
                 )}
 

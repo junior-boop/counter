@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8787";
+const API_URL = "https://counterserver.godigital145.workers.dev";
 
 export class ApiError extends Error {
   status: number;
@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: "GET" | "POST", path: string, body?: unknown, token?: string): Promise<T> {
+async function request<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown, token?: string): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -30,4 +30,6 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown, 
 export const api = {
   get: <T>(path: string, token?: string) => request<T>("GET", path, undefined, token),
   post: <T>(path: string, body?: unknown, token?: string) => request<T>("POST", path, body, token),
+  patch: <T>(path: string, body?: unknown, token?: string) => request<T>("PATCH", path, body, token),
+  delete: <T>(path: string, token?: string) => request<T>("DELETE", path, undefined, token),
 };

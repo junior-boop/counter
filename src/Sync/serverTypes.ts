@@ -30,3 +30,13 @@ export interface ServerRapport {
   ecart: number | null;
   synced_at: string;
 }
+
+export interface ServerEmploye {
+  id: string;
+  etablissement_id: string;
+  nom: string;
+  telephone: string;
+  role: "gerant" | "serveur" | "caissier";
+  password_updated_at: string;
+  created_at: string;
+}
