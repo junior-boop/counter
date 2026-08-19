@@ -3,9 +3,11 @@ import { AlertProvider } from '@/components/alert/alert.context';
 import { DatabaseProvider, useDatabase } from '@/Database/database.context';
 import { enregistrerTachePurgeProduitsActifs } from '@/lib/backgroundTasks';
 import { PatronAuthProvider, usePatronAuth } from '@/PatronAuth/patronAuth.context';
+import { retentativeRapportsNonSynces } from '@/Sync/rapportSync';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from "expo-status-bar";
+import * as Updates from 'expo-updates';
 import { useEffect } from 'react';
 
 
@@ -18,14 +20,23 @@ function RootNavigator() {
 
   const isReady = !dbLoading && !authLoading && !patronLoading;
   const hasProduits = (produitsQuery?.findAll().length ?? 0) > 0;
+  const { isUpdatePending } = Updates.useUpdates();
 
   useEffect(() => {
     if (isReady) SplashScreen.hideAsync();
   }, [isReady]);
 
   useEffect(() => {
+    if (isUpdatePending) Updates.reloadAsync();
+  }, [isUpdatePending]);
+
+  useEffect(() => {
     enregistrerTachePurgeProduitsActifs();
   }, []);
+
+  useEffect(() => {
+    if (isReady && session) void retentativeRapportsNonSynces();
+  }, [isReady, session]);
 
   if (!isReady) return null;
 

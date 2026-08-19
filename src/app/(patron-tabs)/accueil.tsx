@@ -1,11 +1,12 @@
-import { usePatronAuth } from "@/PatronAuth/patronAuth.context";
 import { useAlert } from "@/components/alert/alert.context";
 import { Text } from "@/components/text";
 import { api } from "@/lib/api";
+import { usePatronAuth } from "@/PatronAuth/patronAuth.context";
 import { ServerEtablissement } from "@/Sync/serverTypes";
+import { getDate, getDay, getMonth } from "date-fns";
 import { router, useFocusEffect } from "expo-router";
 import { ChevronRight, Plus } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import theme from "../../constants/constant-style";
@@ -22,6 +23,22 @@ export default function PatronAccueilScreen() {
     const insets = useSafeAreaInsets();
     const [etablissements, setEtablissements] = useState<ServerEtablissement[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [dday, setDday] = useState<{ jour: string, date: number, mois: string }>({ jour: "-", date: 0, mois: "-" })
+
+    const getParcelDate = () => {
+        const date = new Date()
+        const day = ["Dimanche", 'Lundi', "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
+        const months = ["Janvier", "Févier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
+        return {
+            jour: day[getDay(date)],
+            date: getDate(date),
+            mois: months[getMonth(date)]
+        }
+    }
+
+    useEffect(() => {
+        setDday(getParcelDate())
+    }, [])
 
     useFocusEffect(
         useCallback(() => {
@@ -43,6 +60,14 @@ export default function PatronAccueilScreen() {
     return (
         <View style={{ flex: 1, paddingTop: insets.top }}>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom }}>
+                <View style={{ height: theme.inner_height_screen * 0.2, width: "100%", flexDirection: "row", alignItems: "center" }}>
+                    <View style={{ paddingHorizontal: theme.screenPadding }}>
+                        <Text style={{ fontSize: 32, fontWeight: 'bold' }}>{dday.jour}</Text>
+                        <Text style={{ fontSize: 28, fontWeight: "400" }}>{dday?.date < 10 ? `0${dday?.date}` : dday?.date}, {dday?.mois}</Text>
+                    </View>
+                </View>
+
+
                 <View style={{ height: theme.headerHeight, width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: theme.screenPadding }}>
                     <Text style={{ fontSize: theme.size_four }}>Mes établissements</Text>
                     <TouchableOpacity onPress={() => router.push("/patron-etablissement/nouveau")}>

@@ -147,6 +147,7 @@ export interface Rapport extends DatabaseRow {
   montant_commandes: number;
   quantite_perdue: number;
   nombre_ecarts_inventaire: number;
+  synced_at_server?: string | null;
 }
 
 const orm = new SimpleORM("vms-counter.db");

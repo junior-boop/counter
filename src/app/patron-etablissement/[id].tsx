@@ -1,15 +1,15 @@
-import { usePatronAuth } from "@/PatronAuth/patronAuth.context";
 import { useAlert } from "@/components/alert/alert.context";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { Text } from "@/components/text";
 import { ApiError, api } from "@/lib/api";
 import { formaterMontant } from "@/lib/currency";
 import { formaterDateCourte, formaterHeure } from "@/lib/date";
+import { usePatronAuth } from "@/PatronAuth/patronAuth.context";
 import { ServerEmploye, ServerEtablissement, ServerRapport } from "@/Sync/serverTypes";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react-native";
+import { Eye, EyeOff, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react-native";
 import { useCallback, useState } from "react";
-import { ScrollView, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import theme from "../../constants/constant-style";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -43,6 +43,8 @@ export default function PatronEtablissementDetailScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedEmploye, setSelectedEmploye] = useState<ServerEmploye | null>(null);
     const [editForm, setEditForm] = useState({ nom: "", telephone: "", password: "", role: "serveur" as RoleEmploye });
+    const [showAddPassword, setShowAddPassword] = useState(false);
+    const [showEditPassword, setShowEditPassword] = useState(false);
 
     const charger = useCallback(async () => {
         if (!patronSession || !id) return;
@@ -105,6 +107,7 @@ export default function PatronEtablissementDetailScreen() {
     const openEmployeSheet = (employe: ServerEmploye) => {
         setSelectedEmploye(employe);
         setEditForm({ nom: employe.nom, telephone: employe.telephone, password: "", role: employe.role });
+        setShowEditPassword(false);
     };
 
     const closeEmployeSheet = () => setSelectedEmploye(null);
@@ -148,7 +151,7 @@ export default function PatronEtablissementDetailScreen() {
     const codeExpire = etablissement?.pairing_code_expires_at ? etablissement.pairing_code_expires_at < new Date().toISOString() : false;
 
     return (
-        <View style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
             <Stack.Screen options={{ title: etablissement?.nom ?? "Établissement", headerShadowVisible: false, headerShown: true, headerTitleStyle: { fontSize: theme.size_three }, headerStyle: { backgroundColor: "#f5f5f5" } }} />
             {!etablissement ? (
                 <View style={{ paddingHorizontal: theme.screenPadding, paddingTop: theme.internal_padding }}>
@@ -223,14 +226,23 @@ export default function PatronEtablissementDetailScreen() {
                                     keyboardType="phone-pad"
                                     style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
                                 />
-                                <TextInput
-                                    value={addForm.password}
-                                    onChangeText={(password) => setAddForm((prev) => ({ ...prev, password }))}
-                                    placeholder="Mot de passe"
-                                    placeholderTextColor={"#aaaaaa"}
-                                    secureTextEntry
-                                    style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                                />
+                                <View style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, flexDirection: "row", alignItems: "center" }}>
+                                    <TextInput
+                                        value={addForm.password}
+                                        onChangeText={(password) => setAddForm((prev) => ({ ...prev, password }))}
+                                        placeholder="Mot de passe"
+                                        placeholderTextColor={"#aaaaaa"}
+                                        secureTextEntry={!showAddPassword}
+                                        style={{ flex: 1, color: "black", paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                                    />
+                                    <TouchableOpacity onPress={() => setShowAddPassword((prev) => !prev)} style={{ paddingHorizontal: theme.internal_padding }}>
+                                        {showAddPassword ? (
+                                            <EyeOff color="black" size={18} strokeWidth={1.5} />
+                                        ) : (
+                                            <Eye color="black" size={18} strokeWidth={1.5} />
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
                                 <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
                                     {ROLES_EMPLOYE.map((role) => (
                                         <TouchableOpacity
@@ -298,14 +310,23 @@ export default function PatronEtablissementDetailScreen() {
                         keyboardType="phone-pad"
                         style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
                     />
-                    <TextInput
-                        value={editForm.password}
-                        onChangeText={(password) => setEditForm((prev) => ({ ...prev, password }))}
-                        placeholder="Nouveau mot de passe (laisser vide pour ne pas changer)"
-                        placeholderTextColor={"#aaaaaa"}
-                        secureTextEntry
-                        style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
-                    />
+                    <View style={{ backgroundColor: "#f5f5f5", borderRadius: theme.internal_radius_2, flexDirection: "row", alignItems: "center" }}>
+                        <TextInput
+                            value={editForm.password}
+                            onChangeText={(password) => setEditForm((prev) => ({ ...prev, password }))}
+                            placeholder="Nouveau mot de passe (laisser vide pour ne pas changer)"
+                            placeholderTextColor={"#aaaaaa"}
+                            secureTextEntry={!showEditPassword}
+                            style={{ flex: 1, color: "black", paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding_2, fontSize: theme.size_two }}
+                        />
+                        <TouchableOpacity onPress={() => setShowEditPassword((prev) => !prev)} style={{ paddingHorizontal: theme.internal_padding }}>
+                            {showEditPassword ? (
+                                <EyeOff color="black" size={18} strokeWidth={1.5} />
+                            ) : (
+                                <Eye color="black" size={18} strokeWidth={1.5} />
+                            )}
+                        </TouchableOpacity>
+                    </View>
                     <View style={{ flexDirection: "row", gap: theme.internal_padding_2 }}>
                         {ROLES_EMPLOYE.map((role) => (
                             <TouchableOpacity
@@ -334,6 +355,6 @@ export default function PatronEtablissementDetailScreen() {
                     </TouchableOpacity>
                 </View>
             </BottomSheet>
-        </View>
+        </KeyboardAvoidingView>
     );
 }

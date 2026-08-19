@@ -1,4 +1,6 @@
-import { Rapport, SessionCaisse } from "../Database/db";
+import * as EtablissementDb from "../Database/etablissement";
+import * as RapportDb from "../Database/rapport";
+import { Rapport, SessionCaisse, SessionCaisseModel } from "../Database/db";
 import { api } from "../lib/api";
 import { getDeviceToken } from "./deviceToken";
 
@@ -31,7 +33,29 @@ export async function pousserRapport(rapport: Rapport, session: SessionCaisse, s
       },
       deviceToken
     );
+
+    await RapportDb.marquerSynchronise(rapport.id);
   } catch (error) {
     console.warn("Échec de la synchronisation du rapport avec le serveur patron", error);
+  }
+}
+
+/**
+ * Retente l'envoi des rapports jamais parvenus au serveur (clôture faite hors-ligne).
+ * Best-effort, appelée au démarrage de l'app — ne bloque jamais l'utilisateur.
+ */
+export async function retentativeRapportsNonSynces(): Promise<void> {
+  try {
+    const etablissement = await EtablissementDb.get();
+    if (!etablissement?.server_id) return;
+
+    const rapportsNonSynces = await RapportDb.getRapportsNonSynces();
+    for (const rapport of rapportsNonSynces) {
+      const session = await SessionCaisseModel.findById(rapport.session_caisse_id);
+      if (!session) continue;
+      await pousserRapport(rapport, session, etablissement.server_id);
+    }
+  } catch (error) {
+    console.warn("Échec de la retentative de synchronisation des rapports", error);
   }
 }

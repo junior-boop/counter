@@ -3,10 +3,23 @@ import { generateUUID } from "./uuid";
 
 export async function createTable() {
   await RapportModel.createTable();
+  try {
+    await RapportModel.orm.run("ALTER TABLE rapports ADD COLUMN synced_at_server TEXT");
+  } catch {
+    // colonne déjà présente
+  }
 }
 
 export async function getAllRapports(): Promise<Rapport[]> {
   return await RapportModel.findAll();
+}
+
+export async function getRapportsNonSynces(): Promise<Rapport[]> {
+  return (await RapportModel.findAll()).filter((r) => !r.synced_at_server);
+}
+
+export async function marquerSynchronise(id: string): Promise<void> {
+  await RapportModel.update(id, { synced_at_server: new Date().toISOString() });
 }
 
 /**

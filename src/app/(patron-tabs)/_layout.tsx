@@ -1,6 +1,9 @@
+import { usePatronAuth } from '@/PatronAuth/patronAuth.context';
 import { Text } from '@/components/text';
+import { enregistrerPushTokenPatron } from '@/lib/notifications';
 import { Tabs } from 'expo-router';
 import { FileText, House, Settings } from "lucide-react-native";
+import { useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import theme from "../../constants/constant-style";
 
@@ -8,6 +11,12 @@ const fontSizeLabel = theme.size_one
 
 export default function PatronTabsBar() {
     const frame = useSafeAreaInsets()
+    const { patronSession } = usePatronAuth()
+
+    useEffect(() => {
+        if (patronSession) void enregistrerPushTokenPatron(patronSession.token);
+    }, [patronSession]);
+
     return (
         <Tabs
             screenOptions={{

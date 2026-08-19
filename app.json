@@ -16,7 +16,7 @@
       "allowBackup": true,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.sCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -71,6 +71,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5dce3fef-f3c0-4fa2-9e43-5595d270a3a9",
+      "checkAutomatically": "ON_LOAD"
     },
     "extra": {
       "router": {},
