@@ -2,7 +2,12 @@ import { Categorie, CategorieModel, TypeActivite } from "./db";
 import { generateUUID } from "./uuid";
 
 export async function createTable() {
-  return await CategorieModel.createTable();
+  await CategorieModel.createTable();
+  try {
+    await CategorieModel.orm.run("ALTER TABLE categories ADD COLUMN server_categorie_id TEXT");
+  } catch {
+    // colonne déjà présente
+  }
 }
 
 export async function getall(): Promise<Categorie[]> {

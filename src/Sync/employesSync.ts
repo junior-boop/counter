@@ -3,9 +3,24 @@ import { api } from "../lib/api";
 import { getDeviceToken } from "./deviceToken";
 import { ServerEmploye } from "./serverTypes";
 
+const UNE_HEURE_MS = 60 * 60 * 1000;
+
+let syncEnCours: Promise<void> | null = null;
+let dernierSyncAt: number | null = null;
+
 export async function synchroniserEmployes(serverId?: string | null): Promise<void> {
   if (!serverId) return;
+  if (syncEnCours) return syncEnCours;
+  if (dernierSyncAt && Date.now() - dernierSyncAt < UNE_HEURE_MS) return;
 
+  syncEnCours = executerSynchronisation().finally(() => {
+    syncEnCours = null;
+  });
+  return syncEnCours;
+}
+
+async function executerSynchronisation(): Promise<void> {
+  dernierSyncAt = Date.now();
   try {
     const deviceToken = await getDeviceToken();
     if (!deviceToken) return;

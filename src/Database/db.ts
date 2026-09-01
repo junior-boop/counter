@@ -10,6 +10,7 @@ export interface Categorie extends DatabaseRow {
   type: TypeActivite;
   /** Seuil par défaut pour les produits de la catégorie qui n'ont pas de seuil propre. */
   seuil_alerte?: number | null;
+  server_categorie_id?: string | null;
 }
 
 export interface Etablissement extends DatabaseRow {
@@ -19,6 +20,10 @@ export interface Etablissement extends DatabaseRow {
   commande_temps_reel_active: boolean;
   /** Id de l'établissement côté serveur patron, si lié via un code de pairing. */
   server_id?: string | null;
+  /** Déconnexion automatique des employés à une heure fixe (sécurité en fin de service). */
+  fermeture_session_active?: boolean;
+  /** Heure (0-23) de déclenchement, pertinente seulement si `fermeture_session_active`. */
+  fermeture_session_heure?: number | null;
 }
 
 export interface Produit extends DatabaseRow {
@@ -29,6 +34,7 @@ export interface Produit extends DatabaseRow {
   categorie_id: string;
   stock_actuel?: number | null;
   seuil_alerte?: number | null;
+  server_produit_id?: string | null;
 }
 
 export type TypeMouvementStock = "reapprovisionnement" | "perte" | "vente" | "inventaire_ouverture" | "inventaire_fermeture";
@@ -173,6 +179,8 @@ export const EtablissementModel = factory.createModel<Etablissement>("etablissem
   type: "TEXT NOT NULL",
   commande_temps_reel_active: "INTEGER NOT NULL",
   server_id: "TEXT",
+  fermeture_session_active: "INTEGER",
+  fermeture_session_heure: "INTEGER",
 });
 
 export const UtilisateurModel = factory.createModel<Utilisateur>("utilisateurs", {

@@ -76,7 +76,7 @@ export function CurrentOrderCard() {
                     style={{ backgroundColor: "rgb(129, 240, 229)", padding: theme.internal_padding, borderRadius: theme.internal_radius, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                     <View style={{ width: '70%', gap: 8 }}>
                         <Text style={{ fontWeight: "bold", fontSize: theme.size_three, color: "#000000ce" }}>Nouvelle Session</Text>
-                        <Text style={{ fontWeight: "bold", fontSize: theme.size_one, color: "#000000ce" }}>Démarrez l'inventaire du stock et ouvrez la caisse pour commencer</Text>
+                        <Text style={{ fontWeight: "regular", fontSize: theme.size_one, color: "#000000ce" }}>Démarrez l'inventaire du stock et ouvrez la caisse pour commencer</Text>
                     </View>
                     <Plus size={20} color="#000000ce" />
                 </TouchableOpacity>

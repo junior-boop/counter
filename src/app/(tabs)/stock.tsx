@@ -34,7 +34,7 @@ type ModalMode = "reappro" | "perte" | "seuil";
 type ListMode = "reappro" | "perte" | null;
 
 export default function StockScreen() {
-    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, sessionsCaisseQuery, ajouterMouvementStock, modifierMouvementStock, supprimerMouvementStock, ajouterMouvementCaisse, modifierSeuilAlerteProduit, modifierSeuilAlerteCategorie } = useDatabase();
+    const { etablissement, categoriesQuery, produitsQuery, mouvementsStockQuery, sessionsStockQuery, sessionsCaisseQuery, ajouterMouvementStock, modifierMouvementStock, supprimerMouvementStock, ajouterMouvementCaisse, modifierSeuilAlerteProduit, modifierSeuilAlerteCategorie, produitsAlerteIds, alertesVues, marquerAlertesVues } = useDatabase();
     const { session } = useAuth();
     const { showError, confirm } = useAlert();
     const insets = useSafeAreaInsets();
@@ -565,14 +565,24 @@ export default function StockScreen() {
                     <View style={{ gap: 3, borderRadius: theme.internal_radius, overflow: "hidden" }}>
                         {categories.map((categorie) => {
                             const produits = (produitsQuery?.findBy("categorie_id", categorie.id) ?? []);
+                            const idsAlerteCategorie = produits.map((p) => p.id).filter((id) => produitsAlerteIds.has(id));
+                            const aUneAlerteNonVue = idsAlerteCategorie.some((id) => !alertesVues.has(id));
                             return (
                                 <TouchableOpacity
                                     key={categorie.id}
-                                    onPress={() => setCategorieModalId(categorie.id)}
+                                    onPress={() => {
+                                        setCategorieModalId(categorie.id);
+                                        if (idsAlerteCategorie.length > 0) marquerAlertesVues(idsAlerteCategorie);
+                                    }}
                                     style={{ backgroundColor: "white", borderRadius: theme.internal_radius_2, padding: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                                 >
                                     <View style={{ gap: 5 }}>
-                                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                            <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>{categorie.nom}</Text>
+                                            {aUneAlerteNonVue && (
+                                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e74c3c" }} />
+                                            )}
+                                        </View>
                                         <Text style={{ fontSize: theme.size_one, color: "gray" }}>Qte. {produits.length} produits</Text>
                                     </View>
                                     <ChevronRight color="black" size={20} strokeWidth={1} />

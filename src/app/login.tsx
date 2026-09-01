@@ -4,6 +4,7 @@ import { useAlert } from "@/components/alert/alert.context";
 import { Text } from "@/components/text";
 import { useDatabase } from "@/Database/database.context";
 import { synchroniserEmployes } from "@/Sync/employesSync";
+import { synchroniserProduits } from "@/Sync/produitsSync";
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,6 +21,7 @@ export default function LoginScreen() {
 
     useEffect(() => {
         void synchroniserEmployes(etablissement?.server_id).then(() => refreshLocalData(["utilisateurs"]));
+        void synchroniserProduits(etablissement?.server_id).then(() => refreshLocalData(["categories", "produits"]));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

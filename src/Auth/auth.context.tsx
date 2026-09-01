@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Utilisateur } from "@/Database/db";
 import { useDatabase } from "@/Database/database.context";
+import { demanderRuptureAppariement } from "@/Sync/unpair";
 
 const SESSION_KEY = "session_utilisateur_id";
 
@@ -44,6 +45,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = useCallback(async () => {
     setSession(null);
     await SecureStore.deleteItemAsync(SESSION_KEY);
+    void demanderRuptureAppariement();
   }, []);
 
   const value = useMemo<AuthContextType>(

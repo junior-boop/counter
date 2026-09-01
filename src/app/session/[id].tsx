@@ -28,7 +28,6 @@ export default function SessionDetailScreen() {
     const [mouvementActionCible, setMouvementActionCible] = useState<MouvementCaisse | null>(null);
     const [commandeModalVisible, setCommandeModalVisible] = useState(false);
     const [expandedCategorie, setExpandedCategorie] = useState<string | null>(null);
-    const [expandedMouvementId, setExpandedMouvementId] = useState<string | null>(null);
     const [panier, setPanier] = useState<Record<string, number>>({});
     const [commandeActionMouvement, setCommandeActionMouvement] = useState<MouvementCaisse | null>(null);
     const [commandeEnEditionId, setCommandeEnEditionId] = useState<string | null>(null);
@@ -39,6 +38,23 @@ export default function SessionDetailScreen() {
     const entrees = mouvements.filter((m) => m.type === "entree").reduce((sum, m) => sum + m.montant, 0);
     const sorties = mouvements.filter((m) => m.type === "sortie").reduce((sum, m) => sum + m.montant, 0);
     const montantAttendu = session ? session.montant_ouverture + entrees - sorties : 0;
+
+    // Regroupe les commandes consécutives (mouvements avec commande_id) dans un
+    // seul composant, pour éviter une longue liste plate où chaque commande se
+    // confond avec les mouvements de caisse simples autour d'elle.
+    const groupesMouvements = mouvements.reduce<GroupeMouvement[]>((groupes, m) => {
+        if (m.commande_id) {
+            const dernier = groupes[groupes.length - 1];
+            if (dernier?.type === "commandes") {
+                dernier.mouvements.push(m);
+            } else {
+                groupes.push({ type: "commandes", mouvements: [m] });
+            }
+        } else {
+            groupes.push({ type: "mouvement", mouvement: m });
+        }
+        return groupes;
+    }, []);
 
     const commandes = commandesQuery?.findBy("session_id", id) ?? [];
 
@@ -246,22 +262,15 @@ export default function SessionDetailScreen() {
                                 {mouvements.length === 0 && (
                                     <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun mouvement enregistré.</Text>
                                 )}
-                                {mouvements.map((m) => {
-                                    const estCommande = !!m.commande_id;
-                                    const isExpanded = expandedMouvementId === m.id;
-                                    const lignes = estCommande ? (lignesCommandeQuery?.findBy("commande_id", m.commande_id!) ?? []) : [];
-                                    const interactif = estCommande || session.statut === "ouverte";
-                                    const Wrapper = interactif ? TouchableOpacity : View;
-                                    return (
-                                        <View key={m.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, overflow: "hidden" }}>
+                                {groupesMouvements.map((groupe) => {
+                                    if (groupe.type === "mouvement") {
+                                        const m = groupe.mouvement;
+                                        const Wrapper = session.statut === "ouverte" ? TouchableOpacity : View;
+                                        return (
                                             <Wrapper
-                                                {...(interactif ? {
-                                                    ...(estCommande ? { onPress: () => setExpandedMouvementId(isExpanded ? null : m.id) } : {}),
-                                                    ...(session.statut === "ouverte" ? {
-                                                        onLongPress: () => estCommande ? setCommandeActionMouvement(m) : setMouvementActionCible(m),
-                                                    } : {}),
-                                                } : {})}
-                                                style={{ padding: theme.internal_padding, flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}
+                                                key={m.id}
+                                                {...(session.statut === "ouverte" ? { onLongPress: () => setMouvementActionCible(m) } : {})}
+                                                style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}
                                             >
                                                 {m.type === "entree" ? <ArrowUpCircle color="#0f86e7" size={20} strokeWidth={1.5} /> : <ArrowDownCircle color="#e74c3c" size={20} strokeWidth={1.5} />}
                                                 <View style={{ flex: 1, gap: 2 }}>
@@ -269,27 +278,20 @@ export default function SessionDetailScreen() {
                                                     {m.motif && <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{m.motif}</Text>}
                                                 </View>
                                                 <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterHeure(m.date)}</Text>
-                                                {estCommande && (
-                                                    <>
-                                                        {isExpanded ? (
-                                                            <ChevronDown color="#0f86e7" size={20} strokeWidth={1} />
-                                                        ) : (
-                                                            <ChevronRight color="#0f86e7" size={20} strokeWidth={1} />
-                                                        )}
-                                                    </>
-                                                )}
                                             </Wrapper>
-                                            {estCommande && isExpanded && (
-                                                <View style={{ paddingHorizontal: theme.internal_padding, paddingBottom: theme.internal_padding, gap: 6 }}>
-                                                    {lignes.map((l) => (
-                                                        <View key={l.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                                            <Text style={{ fontSize: theme.size_one }}>{l.quantite} × {l.produit_nom}</Text>
-                                                            <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{formaterMontant(l.prix_unitaire * l.quantite)}</Text>
-                                                        </View>
-                                                    ))}
-                                                </View>
-                                            )}
-                                        </View>
+                                        );
+                                    }
+
+                                    // Commandes consécutives : regroupées dans un seul composant, chacune
+                                    // repliable/dépliable indépendamment des autres.
+                                    return (
+                                        <GroupeCommandes
+                                            key={groupe.mouvements[0].id}
+                                            mouvements={groupe.mouvements}
+                                            lignesCommandeQuery={lignesCommandeQuery}
+                                            interactif={session.statut === "ouverte"}
+                                            onLongPressCommande={setCommandeActionMouvement}
+                                        />
                                     );
                                 })}
                             </View>
@@ -635,6 +637,10 @@ type LigneCommande = { produit: Produit; quantite: number };
 type CategorieLite = { id: string; nom: string };
 type ProduitsQuery = ReturnType<typeof useDatabase>["produitsQuery"];
 
+type GroupeMouvement =
+    | { type: "mouvement"; mouvement: MouvementCaisse }
+    | { type: "commandes"; mouvements: MouvementCaisse[] };
+
 // ---------------------------------------------------------------------------
 // Ligne produit mémoïsée : un appui sur +/− ne re-rend que la ligne dont la
 // quantité change, plus jamais l'ensemble du catalogue.
@@ -672,6 +678,67 @@ const ProduitRow = memo(function ProduitRow({
                     <Plus size={16} color="#000" />
                 </TouchableOpacity>
             </View>
+        </View>
+    );
+});
+
+type LignesCommandeQuery = ReturnType<typeof useDatabase>["lignesCommandeQuery"];
+
+// ---------------------------------------------------------------------------
+// Regroupe des commandes consécutives dans une seule carte : chaque commande
+// reste repliable/dépliable indépendamment (état local à ce composant, pas au
+// screen), pour ne pas re-rendre toute la liste des mouvements à chaque tap.
+// ---------------------------------------------------------------------------
+const GroupeCommandes = memo(function GroupeCommandes({
+    mouvements,
+    lignesCommandeQuery,
+    interactif,
+    onLongPressCommande,
+}: {
+    mouvements: MouvementCaisse[];
+    lignesCommandeQuery: LignesCommandeQuery;
+    interactif: boolean;
+    onLongPressCommande: (mouvement: MouvementCaisse) => void;
+}) {
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+
+    return (
+        <View style={{ backgroundColor: "white", borderRadius: theme.internal_radius, overflow: "hidden" }}>
+            {mouvements.map((m, index) => {
+                const isExpanded = expandedId === m.id;
+                const lignes = isExpanded ? (lignesCommandeQuery?.findBy("commande_id", m.commande_id!) ?? []) : [];
+                return (
+                    <View key={m.id} style={index > 0 ? { borderTopWidth: 1, borderTopColor: "#f0f0f0" } : undefined}>
+                        <TouchableOpacity
+                            onPress={() => setExpandedId(isExpanded ? null : m.id)}
+                            {...(interactif ? { onLongPress: () => onLongPressCommande(m) } : {})}
+                            style={{ padding: theme.internal_padding, flexDirection: "row", alignItems: "center", gap: theme.internal_padding_2 }}
+                        >
+                            <ShoppingCart color="#0f86e7" size={20} strokeWidth={1.5} />
+                            <View style={{ flex: 1, gap: 2 }}>
+                                <Text style={{ fontSize: theme.size_two }}>{formaterMontant(m.montant)}</Text>
+                                {m.motif && <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{m.motif}</Text>}
+                            </View>
+                            <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterHeure(m.date)}</Text>
+                            {isExpanded ? (
+                                <ChevronDown color="#0f86e7" size={20} strokeWidth={1} />
+                            ) : (
+                                <ChevronRight color="#0f86e7" size={20} strokeWidth={1} />
+                            )}
+                        </TouchableOpacity>
+                        {isExpanded && (
+                            <View style={{ paddingHorizontal: theme.internal_padding, paddingBottom: theme.internal_padding, gap: 6 }}>
+                                {lignes.map((l) => (
+                                    <View key={l.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                        <Text style={{ fontSize: theme.size_one }}>{l.quantite} × {l.produit_nom}</Text>
+                                        <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{formaterMontant(l.prix_unitaire * l.quantite)}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+                    </View>
+                );
+            })}
         </View>
     );
 });

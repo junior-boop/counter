@@ -10,6 +10,7 @@ import * as Stock from "./stock";
 import * as Utilisateurs from "./utilisateurs";
 import * as Sync from "../Sync/rapportSync";
 import { notifierOuvertureSessionCaisse, notifierStockBas } from "../lib/notifications";
+import { chargerAlertesVues, sauvegarderAlertesVues } from "../lib/alertesStock";
 import React, {
   createContext,
   ReactNode,
@@ -70,6 +71,9 @@ interface DatabaseContextType {
   genererRapportDeLaJournee: () => Promise<string>;
   genererRapportPourSessionCaisse: (sessionId: string) => Promise<string>;
   refreshLocalData: (tables?: readonly TableLocale[]) => Promise<void>;
+  produitsAlerteIds: Set<string>;
+  alertesVues: Set<string>;
+  marquerAlertesVues: (produitIds: string[]) => void;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -158,6 +162,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [rapportsQuery, setRapportsQuery] = useState<QueryForTable<Rapport> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<DatabaseError | null>(null);
+  const [alertesVues, setAlertesVues] = useState<Set<string>>(new Set());
 
   // Set des produits "actifs" (réapprovisionnés depuis moins de 2 semaines) :
   // base des notifications de seuil, recalculé seulement quand la table change.
@@ -165,6 +170,43 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     () => new Set((produitsActifsQuery?.findAll() ?? []).map((p) => p.id)),
     [produitsActifsQuery]
   );
+
+  // Produits actuellement sous leur seuil d'alerte : base du badge visuel
+  // (barre de navigation + boutons de catégorie). `alertesVues` en est
+  // dérivé pour savoir lesquels afficher comme "nouveaux" (non vus).
+  const produitsAlerteIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const produit of produitsQuery?.findAll() ?? []) {
+      const categorie = categoriesQuery?.findById(produit.categorie_id) ?? null;
+      if (Stock.estStockBas(produit, categorie)) ids.add(produit.id);
+    }
+    return ids;
+  }, [produitsQuery, categoriesQuery]);
+
+  useEffect(() => {
+    chargerAlertesVues().then(setAlertesVues);
+  }, []);
+
+  // Un produit qui remonte au-dessus du seuil (réapprovisionné) doit
+  // redevenir "non vu" s'il repasse un jour sous le seuil : on retire son id
+  // du set "vu" dès qu'il quitte la liste des produits en alerte.
+  useEffect(() => {
+    setAlertesVues((vues) => {
+      const filtrees = new Set(Array.from(vues).filter((id) => produitsAlerteIds.has(id)));
+      if (filtrees.size === vues.size) return vues;
+      void sauvegarderAlertesVues(filtrees);
+      return filtrees;
+    });
+  }, [produitsAlerteIds]);
+
+  const marquerAlertesVues = useCallback((produitIds: string[]) => {
+    setAlertesVues((vues) => {
+      const maj = new Set(vues);
+      for (const id of produitIds) maj.add(id);
+      void sauvegarderAlertesVues(maj);
+      return maj;
+    });
+  }, []);
 
   const handleError = useCallback((error: unknown, operation: string) => {
     const dbError: DatabaseError = {
@@ -593,6 +635,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     genererRapportDeLaJournee,
     genererRapportPourSessionCaisse,
     refreshLocalData,
+    produitsAlerteIds,
+    alertesVues,
+    marquerAlertesVues,
   }), [
     categoriesQuery,
     produitsQuery,
@@ -637,6 +682,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     genererRapportDeLaJournee,
     genererRapportPourSessionCaisse,
     refreshLocalData,
+    produitsAlerteIds,
+    alertesVues,
+    marquerAlertesVues,
   ]);
 
   return (

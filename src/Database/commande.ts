@@ -82,45 +82,49 @@ export async function passerCommande(data: {
   const montant_total = data.lignes.reduce((sum, l) => sum + l.produit.prix * l.quantite, 0);
   const date = new Date().toISOString();
 
-  const commande = await CommandeModel.create({
-    id: generateUUID(),
-    session_id: data.session_id,
-    utilisateur_id: data.utilisateur_id,
-    date,
-    montant_total,
-  });
+  let commande: Commande | null = null;
 
-  for (const ligne of data.lignes) {
-    await LigneCommandeModel.create({
+  await CommandeModel.orm.transaction(async () => {
+    commande = await CommandeModel.create({
       id: generateUUID(),
-      commande_id: commande.id,
-      produit_id: ligne.produit.id,
-      produit_nom: ligne.produit.nom,
-      prix_unitaire: ligne.produit.prix,
-      quantite: ligne.quantite,
+      session_id: data.session_id,
+      utilisateur_id: data.utilisateur_id,
+      date,
+      montant_total,
     });
-  }
 
-  await MouvementCaisseModel.create({
-    id: generateUUID(),
-    session_id: data.session_id,
-    type: "entree",
-    montant: montant_total,
-    motif: `Commande (${data.lignes.length} article${data.lignes.length > 1 ? "s" : ""})`,
-    utilisateur_id: data.utilisateur_id,
-    date,
-    commande_id: commande.id,
+    for (const ligne of data.lignes) {
+      await LigneCommandeModel.create({
+        id: generateUUID(),
+        commande_id: commande.id,
+        produit_id: ligne.produit.id,
+        produit_nom: ligne.produit.nom,
+        prix_unitaire: ligne.produit.prix,
+        quantite: ligne.quantite,
+      });
+    }
+
+    await MouvementCaisseModel.create({
+      id: generateUUID(),
+      session_id: data.session_id,
+      type: "entree",
+      montant: montant_total,
+      motif: `Commande (${data.lignes.length} article${data.lignes.length > 1 ? "s" : ""})`,
+      utilisateur_id: data.utilisateur_id,
+      date,
+      commande_id: commande.id,
+    });
+
+    await appliquerVentes({
+      commande_id: commande.id,
+      session_caisse_id: data.session_id,
+      utilisateur_id: data.utilisateur_id,
+      lignes: data.lignes,
+      date,
+    });
   });
 
-  await appliquerVentes({
-    commande_id: commande.id,
-    session_caisse_id: data.session_id,
-    utilisateur_id: data.utilisateur_id,
-    lignes: data.lignes,
-    date,
-  });
-
-  return commande;
+  return commande!;
 }
 
 export async function modifierCommande(data: {
@@ -129,42 +133,46 @@ export async function modifierCommande(data: {
 }): Promise<void> {
   const montant_total = data.lignes.reduce((sum, l) => sum + l.produit.prix * l.quantite, 0);
 
-  await LigneCommandeModel.deleteWhere({ commande_id: data.commande_id });
-  for (const ligne of data.lignes) {
-    await LigneCommandeModel.create({
-      id: generateUUID(),
-      commande_id: data.commande_id,
-      produit_id: ligne.produit.id,
-      produit_nom: ligne.produit.nom,
-      prix_unitaire: ligne.produit.prix,
-      quantite: ligne.quantite,
-    });
-  }
+  await CommandeModel.orm.transaction(async () => {
+    await LigneCommandeModel.deleteWhere({ commande_id: data.commande_id });
+    for (const ligne of data.lignes) {
+      await LigneCommandeModel.create({
+        id: generateUUID(),
+        commande_id: data.commande_id,
+        produit_id: ligne.produit.id,
+        produit_nom: ligne.produit.nom,
+        prix_unitaire: ligne.produit.prix,
+        quantite: ligne.quantite,
+      });
+    }
 
-  await CommandeModel.update(data.commande_id, { montant_total });
-  await MouvementCaisseModel.updateWhere(
-    { commande_id: data.commande_id },
-    { montant: montant_total, motif: `Commande (${data.lignes.length} article${data.lignes.length > 1 ? "s" : ""})` }
-  );
+    await CommandeModel.update(data.commande_id, { montant_total });
+    await MouvementCaisseModel.updateWhere(
+      { commande_id: data.commande_id },
+      { montant: montant_total, motif: `Commande (${data.lignes.length} article${data.lignes.length > 1 ? "s" : ""})` }
+    );
 
-  // On rejoue la sortie de stock au lieu de calculer un delta ligne à ligne :
-  // les lignes sont de toute façon supprimées puis recréées juste au-dessus.
-  const commande = await CommandeModel.findById(data.commande_id);
-  await annulerVentes(data.commande_id);
-  if (commande) {
-    await appliquerVentes({
-      commande_id: commande.id,
-      session_caisse_id: commande.session_id,
-      utilisateur_id: commande.utilisateur_id,
-      lignes: data.lignes,
-      date: new Date().toISOString(),
-    });
-  }
+    // On rejoue la sortie de stock au lieu de calculer un delta ligne à ligne :
+    // les lignes sont de toute façon supprimées puis recréées juste au-dessus.
+    const commande = await CommandeModel.findById(data.commande_id);
+    await annulerVentes(data.commande_id);
+    if (commande) {
+      await appliquerVentes({
+        commande_id: commande.id,
+        session_caisse_id: commande.session_id,
+        utilisateur_id: commande.utilisateur_id,
+        lignes: data.lignes,
+        date: new Date().toISOString(),
+      });
+    }
+  });
 }
 
 export async function supprimerCommande(commande_id: string): Promise<void> {
-  await annulerVentes(commande_id);
-  await LigneCommandeModel.deleteWhere({ commande_id });
-  await MouvementCaisseModel.deleteWhere({ commande_id });
-  await CommandeModel.delete(commande_id);
+  await CommandeModel.orm.transaction(async () => {
+    await annulerVentes(commande_id);
+    await LigneCommandeModel.deleteWhere({ commande_id });
+    await MouvementCaisseModel.deleteWhere({ commande_id });
+    await CommandeModel.delete(commande_id);
+  });
 }

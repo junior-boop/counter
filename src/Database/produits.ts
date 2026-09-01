@@ -2,7 +2,12 @@ import { Produit, ProduitModel } from "./db";
 import { generateUUID } from "./uuid";
 
 export async function createTable() {
-  return await ProduitModel.createTable();
+  await ProduitModel.createTable();
+  try {
+    await ProduitModel.orm.run("ALTER TABLE produits ADD COLUMN server_produit_id TEXT");
+  } catch {
+    // colonne déjà présente
+  }
 }
 
 export async function getall(): Promise<Produit[]> {

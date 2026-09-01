@@ -16,6 +16,16 @@ export async function createTable() {
   } catch {
     // colonne déjà présente
   }
+  try {
+    await EtablissementModel.orm.run("ALTER TABLE etablissement ADD COLUMN fermeture_session_active INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // colonne déjà présente
+  }
+  try {
+    await EtablissementModel.orm.run("ALTER TABLE etablissement ADD COLUMN fermeture_session_heure INTEGER");
+  } catch {
+    // colonne déjà présente
+  }
 }
 
 export async function get(): Promise<Etablissement | null> {
@@ -24,4 +34,10 @@ export async function get(): Promise<Etablissement | null> {
 
 export async function save(data: Omit<Etablissement, "id">): Promise<Etablissement> {
   return await EtablissementModel.upsert({ id: SINGLETON_ID, ...data });
+}
+
+export async function clearServerId(): Promise<void> {
+  const etablissement = await get();
+  if (!etablissement) return;
+  await EtablissementModel.upsert({ ...etablissement, server_id: null });
 }

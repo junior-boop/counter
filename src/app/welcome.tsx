@@ -13,9 +13,9 @@ export default function WelcomeScreen() {
     return (
         <SafeAreaView style={{ flex: 1 }}>
             <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: theme.screenPadding, gap: theme.internal_padding, width: "100%", maxWidth: theme.contentMaxWidth, alignSelf: "center" }}>
-                <View style={{ marginBottom: theme.internal_padding * 2 }}>
+                <View style={{ marginBottom: theme.internal_padding * 2, alignItems: "center" }}>
                     <Text style={{ fontSize: theme.size_six, textAlign: "center" }}>Bienvenue</Text>
-                    <Text style={{ fontSize: theme.size_two, opacity: 0.5, textAlign: "center" }}>Gérez votre bar ou restaurant simplement.</Text>
+                    <Text style={{ fontSize: theme.size_two, opacity: 0.5, textAlign: "center", width: "80%" }}>Gérez votre bar ou restaurant simplement.</Text>
                 </View>
 
                 {!hasAccount && (
@@ -34,18 +34,25 @@ export default function WelcomeScreen() {
                 {hasAccount && (
                     <TouchableOpacity
                         onPress={() => router.push("/login")}
-                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius_2, alignItems: "center", justifyContent: "center", paddingVertical: theme.internal_padding, gap: 5 }}
+                        style={{ backgroundColor: "#0f86e7", borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, paddingHorizontal: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                     >
-                        <Text style={{ fontSize: theme.size_two, color: "white", fontWeight: "bold" }}>J'ai déjà un compte</Text>
-                        <Text style={{ fontSize: theme.size_one, color: "white", opacity: 0.8 }}>Connectez-vous avec votre numéro et votre mot de passe</Text>
+                        <View style={{ gap: 5, width: "80%" }}>
+                            <Text style={{ fontSize: theme.size_three, color: "white", fontWeight: "bold" }}>J'ai déjà un compte</Text>
+                            <Text style={{ fontSize: theme.size_two, color: "white", opacity: 0.8 }}>Connectez-vous avec votre numéro et votre mot de passe</Text>
+                        </View>
+                        <ChevronRight color="white" size={20} strokeWidth={1} />
                     </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
                     onPress={() => router.push("/patron/login")}
-                    style={{ borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, alignItems: "center", justifyContent: "center", marginTop: theme.internal_padding }}
+                    style={{ backgroundColor: "white", borderRadius: theme.internal_radius, paddingVertical: theme.internal_padding, paddingHorizontal: theme.internal_padding, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                 >
-                    <Text style={{ fontSize: theme.size_two, opacity: 0.5, textDecorationLine: "underline" }}>Je suis patron, suivre mes établissements</Text>
+                    <View style={{ gap: 5, width: "80%" }}>
+                        <Text style={{ fontSize: theme.size_three, fontWeight: "bold" }}>Je suis patron</Text>
+                        <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Suivez vos établissements</Text>
+                    </View>
+                    <ChevronRight color="black" size={20} strokeWidth={1} />
                 </TouchableOpacity>
             </View>
         </SafeAreaView>

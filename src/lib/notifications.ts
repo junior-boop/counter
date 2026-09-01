@@ -36,6 +36,7 @@ export async function enregistrerPushTokenPatron(patronToken: string): Promise<v
   try {
     if (!Device.isDevice) return;
     if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+    if (Platform.OS === "android" && !Constants.expoConfig?.android?.googleServicesFile) return;
 
     const { status } = await Notifications.getPermissionsAsync();
     let finalStatus = status;

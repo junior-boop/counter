@@ -163,6 +163,21 @@ export class SimpleORM {
 
   constructor(dbName: string) {
     this.db = SQLite.openDatabaseSync(dbName);
+    // WAL + synchronous NORMAL : évite un fsync bloquant par écriture, seul
+    // le commit de fin de transaction est synchronisé sur disque.
+    this.db.execSync("PRAGMA journal_mode = WAL");
+    this.db.execSync("PRAGMA synchronous = NORMAL");
+  }
+
+  /**
+   * Regroupe plusieurs écritures dans une seule transaction SQLite : au lieu
+   * d'un commit (et donc d'un fsync) par requête, un seul commit à la fin.
+   * Tous les modèles partagent la même connexion `db`, donc les écritures
+   * faites via n'importe quel modèle à l'intérieur de `task` participent à
+   * cette même transaction.
+   */
+  async transaction(task: () => Promise<void>): Promise<void> {
+    await this.db.withTransactionAsync(task);
   }
 
   async query<T = DatabaseRow>(sql: string, params: SQLValue[] = []): Promise<T[]> {

@@ -36,7 +36,9 @@ export default function EtablissementScreen() {
         }
         // La prise de commande en temps réel n'est plus une option : elle est
         // toujours active, la colonne n'est conservée que pour compatibilité.
-        await updateEtablissement({ nom: nom.trim(), type, commande_temps_reel_active: true });
+        // `updateEtablissement` remplace la ligne entière : il faut repartir des
+        // champs existants pour ne pas perdre l'appariement ou les préférences.
+        await updateEtablissement({ ...etablissement, nom: nom.trim(), type, commande_temps_reel_active: true });
         const fresh = await EtablissementDb.get();
         if (!fresh) {
             showError("L'enregistrement a échoué en base de données (vérifiez la console Metro pour le détail).");
@@ -80,7 +82,7 @@ export default function EtablissementScreen() {
                                         <TouchableOpacity
                                             key={option.value}
                                             onPress={() => setType(option.value)}
-                                            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: isSelected ? "#eaf4fd" : "white", paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding }}
+                                            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: isSelected ? "#eaf4fd" : "white", paddingHorizontal: theme.internal_padding, paddingVertical: theme.internal_padding, borderRadius: theme.internal_radius_2 }}
                                         >
                                             <Text style={{ fontSize: theme.size_two, color: isSelected ? "#0f86e7" : "black" }}>{option.label}</Text>
                                             {isSelected && <Check color="#0f86e7" size={18} strokeWidth={2} />}

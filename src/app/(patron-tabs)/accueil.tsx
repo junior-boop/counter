@@ -62,8 +62,8 @@ export default function PatronAccueilScreen() {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: insets.bottom }}>
                 <View style={{ height: theme.inner_height_screen * 0.2, width: "100%", flexDirection: "row", alignItems: "center" }}>
                     <View style={{ paddingHorizontal: theme.screenPadding }}>
-                        <Text style={{ fontSize: 32, fontWeight: 'bold' }}>{dday.jour}</Text>
-                        <Text style={{ fontSize: 28, fontWeight: "400" }}>{dday?.date < 10 ? `0${dday?.date}` : dday?.date}, {dday?.mois}</Text>
+                        <Text style={{ fontSize: 24, fontWeight: 'regular' }}>{dday.jour}</Text>
+                        <Text style={{ fontSize: 32, fontWeight: "bold" }}>{dday?.date < 10 ? `0${dday?.date}` : dday?.date}, {dday?.mois}</Text>
                     </View>
                 </View>
 
@@ -90,7 +90,9 @@ export default function PatronAccueilScreen() {
                             <View style={{ gap: 2 }}>
                                 <Text style={{ fontSize: theme.size_two }}>{etab.nom}</Text>
                                 <Text style={{ fontSize: theme.size_one, opacity: 0.6 }}>{TYPE_LABELS[etab.type] ?? etab.type}</Text>
-                                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{etab.paired_at ? "Lié à un appareil" : "En attente de liaison"}</Text>
+                                <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>
+                                    {etab.nombre_appareils > 0 ? `${etab.nombre_appareils}/2 appareil${etab.nombre_appareils > 1 ? "s" : ""} lié${etab.nombre_appareils > 1 ? "s" : ""}` : "En attente de liaison"}
+                                </Text>
                             </View>
                             <ChevronRight color="black" size={20} strokeWidth={1} />
                         </TouchableOpacity>

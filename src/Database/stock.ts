@@ -70,20 +70,22 @@ export async function ouvrirSession(data: {
     utilisateur_ouverture_id: data.utilisateur_ouverture_id,
   });
 
-  for (const comptage of data.comptages) {
-    await ProduitModel.update(comptage.produit_id, { stock_actuel: comptage.quantite });
-    await MouvementStockModel.create({
-      id: generateUUID(),
-      session_id: session.id,
-      produit_id: comptage.produit_id,
-      type: "inventaire_ouverture",
-      quantite: comptage.quantite,
-      categorie_perte: null,
-      motif: null,
-      utilisateur_id: data.utilisateur_ouverture_id,
-      date: session.date_ouverture,
-    });
-  }
+  await SessionStockModel.orm.transaction(async () => {
+    for (const comptage of data.comptages) {
+      await ProduitModel.update(comptage.produit_id, { stock_actuel: comptage.quantite });
+      await MouvementStockModel.create({
+        id: generateUUID(),
+        session_id: session.id,
+        produit_id: comptage.produit_id,
+        type: "inventaire_ouverture",
+        quantite: comptage.quantite,
+        categorie_perte: null,
+        motif: null,
+        utilisateur_id: data.utilisateur_ouverture_id,
+        date: session.date_ouverture,
+      });
+    }
+  });
 
   return session;
 }
@@ -95,31 +97,35 @@ export async function fermerSession(data: {
 }): Promise<SessionStock | null> {
   const date = new Date().toISOString();
 
-  for (const comptage of data.comptages) {
-    const produit = await ProduitModel.findById(comptage.produit_id);
-    const stockTheorique = produit?.stock_actuel ?? 0;
-    const ecart = comptage.quantite - stockTheorique;
+  await SessionStockModel.orm.transaction(async () => {
+    for (const comptage of data.comptages) {
+      const produit = await ProduitModel.findById(comptage.produit_id);
+      const stockTheorique = produit?.stock_actuel ?? 0;
+      const ecart = comptage.quantite - stockTheorique;
 
-    await ProduitModel.update(comptage.produit_id, { stock_actuel: comptage.quantite });
-    await MouvementStockModel.create({
-      id: generateUUID(),
-      session_id: data.id,
-      produit_id: comptage.produit_id,
-      type: "inventaire_fermeture",
-      quantite: comptage.quantite,
-      ecart,
-      categorie_perte: null,
-      motif: null,
-      utilisateur_id: data.utilisateur_fermeture_id,
-      date,
+      await ProduitModel.update(comptage.produit_id, { stock_actuel: comptage.quantite });
+      await MouvementStockModel.create({
+        id: generateUUID(),
+        session_id: data.id,
+        produit_id: comptage.produit_id,
+        type: "inventaire_fermeture",
+        quantite: comptage.quantite,
+        ecart,
+        categorie_perte: null,
+        motif: null,
+        utilisateur_id: data.utilisateur_fermeture_id,
+        date,
+      });
+    }
+
+    await SessionStockModel.update(data.id, {
+      date_fermeture: date,
+      statut: "fermee",
+      utilisateur_fermeture_id: data.utilisateur_fermeture_id,
     });
-  }
-
-  return await SessionStockModel.update(data.id, {
-    date_fermeture: date,
-    statut: "fermee",
-    utilisateur_fermeture_id: data.utilisateur_fermeture_id,
   });
+
+  return await SessionStockModel.findById(data.id);
 }
 
 export async function ajouterMouvement(data: {

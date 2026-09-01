@@ -23,7 +23,8 @@ export default function PatronTabsBar() {
                 headerShown: false,
                 tabBarShowLabel: true,
                 tabBarStyle: {
-                    height: (frame.bottom >= 20 ? 55 : 78) + (theme.isTablet ? 12 : 0),
+                    height: 55 + frame.bottom + 8 + (theme.isTablet ? 12 : 0),
+                    paddingBottom: frame.bottom + 8,
                     borderTopColor: "#eee",
                     borderTopWidth: 1,
                     elevation: 0,
@@ -34,6 +35,7 @@ export default function PatronTabsBar() {
                     alignItems: 'center',
                     paddingVertical: 8,
                 },
+
             }}
         >
             <Tabs.Screen

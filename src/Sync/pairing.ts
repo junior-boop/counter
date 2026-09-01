@@ -1,8 +1,9 @@
 import { TypeEtablissement } from "../Database/db";
 import * as EtablissementDb from "../Database/etablissement";
 import { api } from "../lib/api";
-import { setDeviceToken } from "./deviceToken";
+import { getOrCreateDeviceIdentifiant, setDeviceToken } from "./deviceToken";
 import { synchroniserEmployes } from "./employesSync";
+import { synchroniserProduits } from "./produitsSync";
 
 interface PairingExchangeResponse {
   etablissement_id: string;
@@ -12,7 +13,8 @@ interface PairingExchangeResponse {
 }
 
 export async function pairEtablissement(pairingCode: string): Promise<PairingExchangeResponse> {
-  const result = await api.post<PairingExchangeResponse>("/pairing/exchange", { pairing_code: pairingCode });
+  const device_identifiant = await getOrCreateDeviceIdentifiant();
+  const result = await api.post<PairingExchangeResponse>("/pairing/exchange", { pairing_code: pairingCode, device_identifiant });
   await setDeviceToken(result.device_token);
   await EtablissementDb.save({
     nom: result.nom,
@@ -21,5 +23,6 @@ export async function pairEtablissement(pairingCode: string): Promise<PairingExc
     server_id: result.etablissement_id,
   });
   void synchroniserEmployes(result.etablissement_id);
+  void synchroniserProduits(result.etablissement_id);
   return result;
 }
