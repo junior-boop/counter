@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "vms-counter",
+    "name": "Accent",
     "slug": "vms-counter",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,7 +19,7 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#23f928",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -36,7 +36,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#23f928",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
