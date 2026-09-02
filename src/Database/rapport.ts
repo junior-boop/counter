@@ -1,10 +1,16 @@
-import { CommandeModel, MouvementCaisseModel, MouvementStockModel, Rapport, RapportModel, SessionCaisse } from "./db";
+import { CommandeModel, MouvementCaisseModel, MouvementStockModel, ProduitModel, Rapport, RapportModel, SessionCaisse } from "./db";
+import { RapportDetails } from "../lib/rapportDetails";
 import { generateUUID } from "./uuid";
 
 export async function createTable() {
   await RapportModel.createTable();
   try {
     await RapportModel.orm.run("ALTER TABLE rapports ADD COLUMN synced_at_server TEXT");
+  } catch {
+    // colonne déjà présente
+  }
+  try {
+    await RapportModel.orm.run("ALTER TABLE rapports ADD COLUMN details TEXT");
   } catch {
     // colonne déjà présente
   }
@@ -45,6 +51,22 @@ export async function genererRapportPourSession(session: SessionCaisse): Promise
     .filter((m) => m.type === "sortie" && m.motif === "Réapprovisionnement stock")
     .reduce((s, m) => s + m.montant, 0);
 
+  const pertes = mouvementsStock.filter((m) => m.type === "perte");
+  const ecarts = mouvementsStock.filter(
+    (m) => (m.type === "inventaire_ouverture" || m.type === "inventaire_fermeture") && m.ecart != null && m.ecart !== 0
+  );
+  // Résolus une seule fois pour tous les produits impliqués : le rapport patron
+  // n'a pas accès à la base locale, le nom doit donc être figé dans le JSON.
+  const produits = await ProduitModel.findAll();
+  const nomProduit = (produit_id: string) => produits.find((p) => p.id === produit_id)?.nom ?? "Produit";
+
+  const details: RapportDetails = {
+    commandes: commandes.map((c) => ({ date: c.date, montant_total: c.montant_total })),
+    mouvementsCaisse: mouvementsNonCommande.map((m) => ({ type: m.type as "entree" | "sortie", montant: m.montant, motif: m.motif ?? null, date: m.date })),
+    pertes: pertes.map((m) => ({ produit_nom: nomProduit(m.produit_id), quantite: m.quantite, categorie_perte: m.categorie_perte ?? null })),
+    ecarts: ecarts.map((m) => ({ produit_nom: nomProduit(m.produit_id), ecart: m.ecart ?? 0 })),
+  };
+
   const rapport: Rapport = {
     id: generateUUID(),
     session_caisse_id: session.id,
@@ -55,10 +77,9 @@ export async function genererRapportPourSession(session: SessionCaisse): Promise
     nombre_reappro: mouvementsStock.filter((m) => m.type === "reapprovisionnement").length,
     nombre_commandes: commandes.length,
     montant_commandes: commandes.reduce((s, c) => s + c.montant_total, 0),
-    quantite_perdue: mouvementsStock.filter((m) => m.type === "perte").reduce((s, m) => s + m.quantite, 0),
-    nombre_ecarts_inventaire: mouvementsStock.filter(
-      (m) => (m.type === "inventaire_ouverture" || m.type === "inventaire_fermeture") && m.ecart != null && m.ecart !== 0
-    ).length,
+    quantite_perdue: pertes.reduce((s, m) => s + m.quantite, 0),
+    nombre_ecarts_inventaire: ecarts.length,
+    details: JSON.stringify(details),
   };
   await RapportModel.create(rapport);
   return rapport;

@@ -1,13 +1,15 @@
 import { useAlert } from "@/components/alert/alert.context";
 import { BottomSheet } from "@/components/bottom-sheet";
+import { RapportDetail } from "@/components/RapportDetail";
 import { Text } from "@/components/text";
 import { ApiError, api } from "@/lib/api";
 import { formaterMontant } from "@/lib/currency";
 import { formaterDateCourte, formaterHeure } from "@/lib/date";
+import { parseRapportDetails } from "@/lib/rapportDetails";
 import { usePatronAuth } from "@/PatronAuth/patronAuth.context";
 import { ServerCategorie, ServerEmploye, ServerEtablissement, ServerProduit, ServerRapport } from "@/Sync/serverTypes";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ChevronRight, Eye, EyeOff, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import theme from "../../constants/constant-style";
@@ -47,6 +49,7 @@ export default function PatronEtablissementDetailScreen() {
     const [etablissement, setEtablissement] = useState<ServerEtablissement | null>(null);
     const [rapports, setRapports] = useState<ServerRapport[]>([]);
     const [isRegenerating, setIsRegenerating] = useState(false);
+    const [rapportOuvertId, setRapportOuvertId] = useState<string | null>(null);
 
     const [employes, setEmployes] = useState<ServerEmploye[]>([]);
     const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
@@ -383,23 +386,49 @@ export default function PatronEtablissementDetailScreen() {
                             {rapports.length === 0 && (
                                 <Text style={{ fontSize: theme.size_two, opacity: 0.5 }}>Aucun rapport synchronisé pour l'instant.</Text>
                             )}
-                            {rapports.map((rapport) => (
-                                <View key={rapport.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, padding: theme.internal_padding, gap: 4 }}>
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                                        <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterDateCourte(rapport.date_generation)}</Text>
-                                        <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterHeure(rapport.date_generation)}</Text>
+                            {rapports.map((rapport) => {
+                                const estOuvert = rapportOuvertId === rapport.id;
+                                return (
+                                    <View key={rapport.id} style={{ backgroundColor: "white", borderRadius: theme.internal_radius, overflow: "hidden" }}>
+                                        <TouchableOpacity
+                                            onPress={() => setRapportOuvertId(estOuvert ? null : rapport.id)}
+                                            style={{ padding: theme.internal_padding, gap: 4 }}
+                                        >
+                                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                                <Text style={{ fontSize: theme.size_two, fontWeight: "bold" }}>{formaterDateCourte(rapport.date_generation)}</Text>
+                                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                    <Text style={{ fontSize: theme.size_one, opacity: 0.5 }}>{formaterHeure(rapport.date_generation)}</Text>
+                                                    {estOuvert ? <ChevronDown color="black" size={18} strokeWidth={1} /> : <ChevronRight color="black" size={18} strokeWidth={1} />}
+                                                </View>
+                                            </View>
+                                            <Text style={{ fontSize: theme.size_two, color: (rapport.ecart ?? 0) === 0 ? "#0f86e7" : "#e74c3c" }}>
+                                                Écart : {formaterMontant(rapport.ecart ?? 0)}
+                                            </Text>
+                                            <Text style={{ fontSize: theme.size_one, opacity: 0.7 }}>
+                                                Entrées : {formaterMontant(rapport.total_entrees)} · Sorties : {formaterMontant(rapport.total_sorties)}
+                                            </Text>
+                                            <Text style={{ fontSize: theme.size_one, opacity: 0.7 }}>
+                                                Commandes : {rapport.nombre_commandes} ({formaterMontant(rapport.montant_commandes)})
+                                            </Text>
+                                        </TouchableOpacity>
+                                        {estOuvert && (
+                                            <View style={{ padding: theme.internal_padding, paddingTop: 0, backgroundColor: "#f5f5f5" }}>
+                                                <RapportDetail
+                                                    session={{
+                                                        date_ouverture: rapport.session_date_ouverture,
+                                                        date_fermeture: rapport.session_date_fermeture,
+                                                        montant_ouverture: rapport.montant_ouverture,
+                                                        montant_fermeture: rapport.montant_fermeture,
+                                                        ecart: rapport.ecart,
+                                                    }}
+                                                    rapport={rapport}
+                                                    details={parseRapportDetails(rapport.details)}
+                                                />
+                                            </View>
+                                        )}
                                     </View>
-                                    <Text style={{ fontSize: theme.size_two, color: (rapport.ecart ?? 0) === 0 ? "#0f86e7" : "#e74c3c" }}>
-                                        Écart : {formaterMontant(rapport.ecart ?? 0)}
-                                    </Text>
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.7 }}>
-                                        Entrées : {formaterMontant(rapport.total_entrees)} · Sorties : {formaterMontant(rapport.total_sorties)}
-                                    </Text>
-                                    <Text style={{ fontSize: theme.size_one, opacity: 0.7 }}>
-                                        Commandes : {rapport.nombre_commandes} ({formaterMontant(rapport.montant_commandes)})
-                                    </Text>
-                                </View>
-                            ))}
+                                );
+                            })}
                         </View>
                     </View>
                     <View style={{ height: 100 }} />

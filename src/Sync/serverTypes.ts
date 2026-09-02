@@ -24,6 +24,7 @@ export interface ServerRapport {
   montant_commandes: number;
   quantite_perdue: number;
   nombre_ecarts_inventaire: number;
+  details: string | null;
   session_date_ouverture: string;
   session_date_fermeture: string | null;
   montant_ouverture: number;

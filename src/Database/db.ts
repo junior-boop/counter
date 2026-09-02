@@ -153,6 +153,7 @@ export interface Rapport extends DatabaseRow {
   montant_commandes: number;
   quantite_perdue: number;
   nombre_ecarts_inventaire: number;
+  details?: string | null;
   synced_at_server?: string | null;
 }
 

@@ -25,6 +25,7 @@ export async function pousserRapport(rapport: Rapport, session: SessionCaisse, s
         montant_commandes: rapport.montant_commandes,
         quantite_perdue: rapport.quantite_perdue,
         nombre_ecarts_inventaire: rapport.nombre_ecarts_inventaire,
+        details: rapport.details ?? null,
         session_date_ouverture: session.date_ouverture,
         session_date_fermeture: session.date_fermeture ?? null,
         montant_ouverture: session.montant_ouverture,

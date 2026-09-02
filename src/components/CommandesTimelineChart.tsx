@@ -3,9 +3,10 @@ import { ActivityIndicator, LayoutChangeEvent, ScrollView, View } from "react-na
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
 import theme from "../constants/constant-style";
-import { Commande } from "../Database/db";
 import { formaterMontant } from "../lib/currency";
 import { Text } from "./text";
+
+type CommandePourTimeline = { date: string; montant_total: number };
 
 const PAS_MINUTES = 10;
 const PAS_MS = PAS_MINUTES * 60 * 1000;
@@ -28,7 +29,7 @@ const STYLE_DISCRET = { fontSize: theme.size_one, opacity: 0.6 };
 
 type Creneau = { debutMs: number; nombre: number; montant: number };
 
-export function CommandesTimelineChart({ commandes, debut, fin }: { commandes: Commande[]; debut: string; fin?: string | null }) {
+export function CommandesTimelineChart({ commandes, debut, fin }: { commandes: CommandePourTimeline[]; debut: string; fin?: string | null }) {
     const [largeur, setLargeur] = useState(0);
     const [selection, setSelection] = useState<number | null>(null);
 
