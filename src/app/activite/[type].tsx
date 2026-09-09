@@ -23,7 +23,7 @@ export default function ActiviteScreen() {
     const { etablissement, categoriesQuery, produitsQuery, addProduit, updateProduit, deleteCategorie, deleteProduit, refreshLocalData } = useDatabase();
     const { showError, confirm } = useAlert();
 
-    const lectureSeule = !!etablissement?.server_id;
+    const lectureSeule = true;
 
     useFocusEffect(
         useCallback(() => {

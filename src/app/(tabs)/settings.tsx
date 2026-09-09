@@ -33,7 +33,7 @@ export default function SettingsScreen() {
     const { confirm, showError } = useAlert();
     const border = useSafeAreaInsets();
     const estAdmin = session?.role === "patron" || session?.role === "gerant";
-    const lectureSeule = !!etablissement?.server_id;
+    const lectureSeule = true;
 
     const categories = (categoriesQuery?.findAll() ?? []).slice().sort((a, b) => a.nom.localeCompare(b.nom));
 
