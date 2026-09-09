@@ -116,6 +116,23 @@ export async function fermerSession(data: {
         utilisateur_id: data.utilisateur_fermeture_id,
         date,
       });
+
+      // Écart négatif = perte constatée : catégorisée "inexplique" par défaut,
+      // recatégorisable ensuite via l'écran des pertes. stock_actuel est déjà
+      // positionné à la valeur comptée ci-dessus, donc pas de second décrément ici.
+      if (ecart < 0) {
+        await MouvementStockModel.create({
+          id: generateUUID(),
+          session_id: data.id,
+          produit_id: comptage.produit_id,
+          type: "perte",
+          quantite: -ecart,
+          categorie_perte: "inexplique",
+          motif: "Écart de comptage (fermeture automatique)",
+          utilisateur_id: data.utilisateur_fermeture_id,
+          date,
+        });
+      }
     }
 
     await SessionStockModel.update(data.id, {
