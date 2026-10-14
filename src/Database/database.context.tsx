@@ -11,6 +11,7 @@ import * as Utilisateurs from "./utilisateurs";
 import * as Sync from "../Sync/rapportSync";
 import { notifierOuvertureSessionCaisse, notifierStockBas } from "../lib/notifications";
 import { chargerAlertesVues, sauvegarderAlertesVues } from "../lib/alertesStock";
+import { broadcastRealtimeEvent } from "../Sync/realtimeSync";
 import React, {
   createContext,
   ReactNode,
@@ -392,6 +393,13 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       const result = await Caisse.ouvrirSession(data);
       await refreshLocalData(["sessionsCaisse"]);
       notifierOuvertureSessionCaisse(data.montant_ouverture);
+      broadcastRealtimeEvent("SESSION_OPENED", {
+        sessionId: result.id,
+        dateOuverture: result.date_ouverture,
+        fondDeCaisse: result.montant_ouverture,
+        type_activite: result.type_activite,
+        ouvertPar: { userId: data.utilisateur_ouverture_id, nom: "", role: "employe" },
+      });
       return result;
     } catch (error) {
       handleError(error, "ouverture de la caisse");
@@ -403,6 +411,12 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       await Caisse.fermerSession(data);
       await refreshLocalData(["sessionsCaisse"]);
+      broadcastRealtimeEvent("SESSION_CLOSED", {
+        sessionId: data.id,
+        montantFermeture: data.montant_fermeture,
+        ecart: data.ecart,
+        fermePar: { userId: data.utilisateur_fermeture_id, nom: "", role: "employe" },
+      });
     } catch (error) {
       handleError(error, "fermeture de la caisse");
     }
@@ -413,6 +427,15 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await Caisse.ajouterMouvement(data);
       await refreshLocalData(["mouvementsCaisse"]);
+      broadcastRealtimeEvent("CASH_MOVEMENT", {
+        movementId: result.id,
+        sessionId: data.session_id,
+        type: data.type,
+        montant: data.montant,
+        motif: data.motif,
+        employeId: data.utilisateur_id,
+        date: result.date,
+      });
       return result;
     } catch (error) {
       handleError(error, "ajout d'un mouvement de caisse");
@@ -447,6 +470,21 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       const result = await CommandeDb.passerCommande(data);
       await refreshLocalData(["commandes", "lignesCommande", "mouvementsCaisse", "mouvementsStock", "produits"]);
       verifierSeuilsFranchis(produitIds, stockAvant, categoriesQuery, produitsActifsIds);
+      broadcastRealtimeEvent("ORDER_CREATED", {
+        orderId: result.id,
+        sessionId: data.session_id,
+        employeId: data.utilisateur_id,
+        montantTotal: result.montant_total,
+        modePaiement: "especes",
+        date: result.date,
+        lignes: data.lignes.map((l) => ({
+          produitId: l.produit.id,
+          nom: l.produit.nom,
+          quantite: l.quantite,
+          prixUnitaire: l.produit.prix,
+          sousTotal: l.produit.prix * l.quantite,
+        })),
+      });
       return result;
     } catch (error) {
       handleError(error, "passer une commande");
@@ -514,6 +552,17 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       const result = await Stock.ajouterMouvement(data);
       await refreshLocalData(["mouvementsStock", "produits", "produitsActifs"]);
       verifierSeuilsFranchis([data.produit_id], stockAvant, categoriesQuery, produitsActifsIds);
+      broadcastRealtimeEvent("STOCK_MOVEMENT", {
+        movementId: result.id,
+        sessionId: data.session_id,
+        produitId: data.produit_id,
+        type: data.type,
+        quantite: data.quantite,
+        categoriePerte: data.categorie_perte,
+        motif: data.motif,
+        utilisateurId: data.utilisateur_id,
+        date: result.date,
+      });
       return result;
     } catch (error) {
       handleError(error, "enregistrement d'un mouvement de stock");

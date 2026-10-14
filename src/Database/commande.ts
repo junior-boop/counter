@@ -176,3 +176,81 @@ export async function supprimerCommande(commande_id: string): Promise<void> {
     await CommandeModel.delete(commande_id);
   });
 }
+
+/**
+ * Applique une commande reçue en temps réel depuis un autre terminal.
+ * Idempotent : si la commande existe déjà, ne fait rien.
+ */
+export async function appliquerCommandeDistante(data: {
+  orderId: string;
+  sessionId: string;
+  userId: string;
+  date: string;
+  montantTotal: number;
+  modePaiement?: string;
+  lignes: Array<{
+    produitId: string;
+    nom: string;
+    quantite: number;
+    prixUnitaire: number;
+    sousTotal: number;
+  }>;
+}): Promise<void> {
+  const existante = await CommandeModel.findById(data.orderId);
+  if (existante) return;
+
+  await CommandeModel.orm.transaction(async () => {
+    await CommandeModel.create({
+      id: data.orderId,
+      session_id: data.sessionId,
+      utilisateur_id: data.userId,
+      date: data.date,
+      montant_total: data.montantTotal,
+    });
+
+    for (const ligne of data.lignes) {
+      await LigneCommandeModel.create({
+        id: generateUUID(),
+        commande_id: data.orderId,
+        produit_id: ligne.produitId,
+        produit_nom: ligne.nom,
+        prix_unitaire: ligne.prixUnitaire,
+        quantite: ligne.quantite,
+      });
+    }
+
+    await MouvementCaisseModel.create({
+      id: generateUUID(),
+      session_id: data.sessionId,
+      type: "entree",
+      montant: data.montantTotal,
+      motif: `Commande (${data.lignes.length} article${data.lignes.length > 1 ? "s" : ""})`,
+      utilisateur_id: data.userId,
+      date: data.date,
+      commande_id: data.orderId,
+    });
+
+    const lignesPourVentes = data.lignes.map((l) => ({
+      produit: {
+        id: l.produitId,
+        nom: l.nom,
+        prix: l.prixUnitaire,
+        quantite_par_lot: null,
+        categorie_id: "",
+        created_at: data.date,
+        stock_actuel: 0,
+        seuil_alerte: null,
+      },
+      quantite: l.quantite,
+    }));
+
+    await appliquerVentes({
+      commande_id: data.orderId,
+      session_caisse_id: data.sessionId,
+      utilisateur_id: data.userId,
+      lignes: lignesPourVentes,
+      date: data.date,
+    });
+  });
+}
+

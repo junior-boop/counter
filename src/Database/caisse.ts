@@ -74,3 +74,22 @@ export async function modifierMouvement(data: {
 export async function supprimerMouvement(id: string): Promise<void> {
   await MouvementCaisseModel.delete(id);
 }
+
+/**
+ * Applique un mouvement de caisse reçu depuis un autre terminal en temps réel.
+ * Idempotent.
+ */
+export async function ajouterMouvementDistant(data: {
+  id: string;
+  session_id: string;
+  type: MouvementCaisse["type"];
+  montant: number;
+  motif?: string;
+  utilisateur_id: string;
+  date: string;
+}): Promise<MouvementCaisse | null> {
+  const existant = await MouvementCaisseModel.findById(data.id);
+  if (existant) return existant;
+  return await MouvementCaisseModel.create(data);
+}
+

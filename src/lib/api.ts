@@ -1,4 +1,5 @@
-const API_URL = "https://counterserver.godigital145.workers.dev";
+export const API_URL = "https://counterserver.godigital145.workers.dev";
+export const WS_URL = API_URL.replace(/^http/, "ws");
 
 export class ApiError extends Error {
   status: number;

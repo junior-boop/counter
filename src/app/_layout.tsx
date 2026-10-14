@@ -7,6 +7,8 @@ import { synchroniserEmployes } from '@/Sync/employesSync';
 import { synchroniserProduits } from '@/Sync/produitsSync';
 import { retentativeRapportsNonSynces } from '@/Sync/rapportSync';
 import { retentativeRuptureAppariement } from '@/Sync/unpair';
+import { getDeviceToken } from '@/Sync/deviceToken';
+import { initRealtimeSync, stopRealtimeSync } from '@/Sync/realtimeSync';
 import { Stack } from 'expo-router';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -80,6 +82,34 @@ function RootNavigator() {
     void synchroniserProduits(etablissement.server_id).then(() => refreshLocalData(["categories", "produits"]));
   }, [isReady, session, etablissement?.server_id, refreshLocalData]);
 
+  useEffect(() => {
+    if (!isReady || !etablissement?.server_id) return;
+
+    let cleanup: (() => void) | undefined;
+
+    async function demarrerSync() {
+      const deviceToken = await getDeviceToken();
+      const token = deviceToken || patronSession?.token;
+      if (!token || !etablissement?.server_id) return;
+
+      cleanup = initRealtimeSync({
+        etablissementId: etablissement.server_id,
+        token,
+        nom: session?.nom || "Collaborateur",
+        onRefresh: async (tables) => {
+          await refreshLocalData(tables as any);
+        },
+      });
+    }
+
+    void demarrerSync();
+
+    return () => {
+      cleanup?.();
+      stopRealtimeSync();
+    };
+  }, [isReady, etablissement?.server_id, session?.nom, patronSession?.token, refreshLocalData]);
+
   if (!isReady) return null;
 
   return (
@@ -99,6 +129,7 @@ function RootNavigator() {
         <Stack.Screen name="(patron-tabs)" />
         <Stack.Screen name="patron-etablissement/[id]" />
         <Stack.Screen name="patron-etablissement/nouveau" />
+        <Stack.Screen name="patron-etablissement/[id]/gerer" />
       </Stack.Protected>
       <Stack.Protected guard={!session && !patronSession}>
         <Stack.Screen name="welcome" />

@@ -309,3 +309,54 @@ export async function purgerProduitsInactifs(): Promise<number> {
   }
   return purges;
 }
+
+/**
+ * Applique un mouvement de stock reçu depuis un autre terminal en temps réel (réappro, perte, ajustement).
+ * Idempotent.
+ */
+export async function appliquerMouvementStockDistant(data: {
+  id: string;
+  session_id?: string;
+  produit_id: string;
+  type: TypeMouvementStock;
+  quantite: number;
+  categorie_perte?: CategoriePerte | null;
+  motif?: string | null;
+  utilisateur_id?: string;
+  date: string;
+}): Promise<void> {
+  const existant = await MouvementStockModel.findById(data.id);
+  if (existant) return;
+
+  await MouvementStockModel.orm.transaction(async () => {
+    await MouvementStockModel.create({
+      id: data.id,
+      session_id: data.session_id || "",
+      produit_id: data.produit_id,
+      type: data.type,
+      quantite: data.quantite,
+      categorie_perte: data.categorie_perte ?? null,
+      motif: data.motif ?? null,
+      utilisateur_id: data.utilisateur_id || "",
+      date: data.date,
+      commande_id: null,
+      ecart: null,
+    });
+
+    const produit = await ProduitModel.findById(data.produit_id);
+    if (produit) {
+      let nouveauStock = produit.stock_actuel ?? 0;
+      if (data.type === "reapprovisionnement") {
+        nouveauStock += data.quantite;
+        // Marquer le produit comme actif
+        await ProduitActifModel.upsert({ id: data.produit_id, derniere_activite: data.date });
+      } else if (data.type === "perte" || data.type === "vente") {
+        nouveauStock -= data.quantite;
+      } else if (data.type === "inventaire_ouverture" || data.type === "inventaire_fermeture") {
+        nouveauStock = data.quantite;
+      }
+      await ProduitModel.update(produit.id, { stock_actuel: nouveauStock });
+    }
+  });
+}
+

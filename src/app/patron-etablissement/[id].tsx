@@ -249,7 +249,18 @@ export default function PatronEtablissementDetailScreen() {
 
     return (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-            <Stack.Screen options={{ title: etablissement?.nom ?? "Établissement", headerShadowVisible: false, headerShown: true, headerTitleStyle: { fontSize: theme.size_three }, headerStyle: { backgroundColor: "#f5f5f5" } }} />
+            <Stack.Screen options={{
+                title: etablissement?.nom ?? "Établissement", headerShadowVisible: false, headerShown: true, headerTitleStyle: { fontSize: theme.size_three },
+                headerRight: () => (
+                    <TouchableOpacity onPress={() => router.push(`/patron-etablissement/${id}/gerer`)} style={{ paddingRight: theme.screenPadding, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Text style={{ fontSize: theme.size_two, color: "#202020ff" }}>Voir</Text>
+                        <Eye size={22} color="#202020ff" strokeWidth={1.5} />
+                    </TouchableOpacity>
+                ),
+                headerStyle: { backgroundColor: "#f5f5f5" }
+            }}
+
+            />
             {!etablissement ? (
                 <View style={{ paddingHorizontal: theme.screenPadding, paddingTop: theme.internal_padding, flex: 1, justifyContent: "center", alignItems: "center" }}>
                     <ActivityIndicator size="large" color="#0f86e7" />

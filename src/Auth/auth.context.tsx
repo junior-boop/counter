@@ -43,10 +43,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signOut = useCallback(async () => {
+    const etaitPatron = session?.role === "patron";
     setSession(null);
     await SecureStore.deleteItemAsync(SESSION_KEY);
-    void demanderRuptureAppariement();
-  }, []);
+    if (!etaitPatron) {
+      void demanderRuptureAppariement();
+    }
+  }, [session?.role]);
 
   const value = useMemo<AuthContextType>(
     () => ({ session, isLoading, signIn, signOut }),
